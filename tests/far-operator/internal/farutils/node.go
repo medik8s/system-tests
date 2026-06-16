@@ -9,6 +9,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -17,16 +18,16 @@ import (
 
 // RunOnNode executes a command on the specified node using
 // "oc debug node/<name> -- chroot /host <cmd>".
-func RunOnNode(nodeName string, cmd ...string) (string, error) {
+func RunOnNode(ctx context.Context, nodeName string, cmd ...string) (string, error) {
 	args := append(
 		[]string{"debug", "node/" + nodeName, "--", "chroot", "/host"},
 		cmd...,
 	)
 
-	ctx, cancel := context.WithTimeout(context.Background(), farparams.OcDebugTimeout)
+	childCtx, cancel := context.WithTimeout(ctx, farparams.OcDebugTimeout)
 	defer cancel()
 
-	command := exec.CommandContext(ctx, "oc", args...)
+	command := exec.CommandContext(childCtx, "oc", args...)
 
 	var stdout, stderr bytes.Buffer
 
@@ -34,7 +35,7 @@ func RunOnNode(nodeName string, cmd ...string) (string, error) {
 	command.Stderr = &stderr
 
 	if err := command.Run(); err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
+		if childCtx.Err() == context.DeadlineExceeded {
 			return "", fmt.Errorf(
 				"oc debug on node %s timed out after %s (stderr: %s)",
 				nodeName, farparams.OcDebugTimeout, stderr.String(),
@@ -51,8 +52,8 @@ func RunOnNode(nodeName string, cmd ...string) (string, error) {
 }
 
 // StopKubelet stops the kubelet service on the target node.
-func StopKubelet(nodeName string) error {
-	_, err := RunOnNode(nodeName, "systemctl", "stop", "kubelet")
+func StopKubelet(ctx context.Context, nodeName string) error {
+	_, err := RunOnNode(ctx, nodeName, "systemctl", "stop", "kubelet")
 	if err != nil && strings.Contains(err.Error(), "connection refused") {
 		return nil
 	}
@@ -61,16 +62,16 @@ func StopKubelet(nodeName string) error {
 }
 
 // StartKubelet starts the kubelet service on the target node.
-func StartKubelet(nodeName string) error {
-	_, err := RunOnNode(nodeName, "systemctl", "start", "kubelet")
+func StartKubelet(ctx context.Context, nodeName string) error {
+	_, err := RunOnNode(ctx, nodeName, "systemctl", "start", "kubelet")
 
 	return err
 }
 
 // GetNodeBootID retrieves the boot_id from /proc on the target node.
-func GetNodeBootID(nodeName string) (string, error) {
+func GetNodeBootID(ctx context.Context, nodeName string) (string, error) {
 	output, err := RunOnNode(
-		nodeName, "cat", "/proc/sys/kernel/random/boot_id",
+		ctx, nodeName, "cat", "/proc/sys/kernel/random/boot_id",
 	)
 	if err != nil {
 		return "", fmt.Errorf(
@@ -134,7 +135,7 @@ func WaitForNodeReady(
 			if err := k8sClient.Get(
 				ctx, client.ObjectKey{Name: nodeName}, node,
 			); err != nil {
-				return false, nil
+				return false, err
 			}
 
 			for _, cond := range node.Status.Conditions {
@@ -161,6 +162,10 @@ func WaitForNodeReboot(
 				ctx, k8sClient, nodeName,
 			)
 			if err != nil {
+				if k8serrors.IsNotFound(err) {
+					return false, fmt.Errorf("node %s was deleted during reboot wait: %w", nodeName, err)
+				}
+
 				return false, nil
 			}
 

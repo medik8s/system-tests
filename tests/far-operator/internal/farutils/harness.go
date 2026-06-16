@@ -3,6 +3,7 @@ package farutils
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	configv1 "github.com/openshift/api/config/v1"
@@ -106,6 +107,10 @@ func SelectWorkerNode(ctx context.Context, k8sClient client.Client, excludeNodes
 		return nil, fmt.Errorf("failed to list worker nodes: %w", err)
 	}
 
+	sort.Slice(nodeList.Items, func(i, j int) bool {
+		return nodeList.Items[i].Name < nodeList.Items[j].Name
+	})
+
 	excluded := make(map[string]bool, len(excludeNodes))
 	for _, name := range excludeNodes {
 		excluded[name] = true
@@ -173,12 +178,20 @@ func BuildAWSNodeParameters(ctx context.Context, k8sClient client.Client) (map[s
 	for i := range nodeList.Items {
 		node := &nodeList.Items[i]
 
+		if node.Spec.Unschedulable || !isNodeReady(node) {
+			continue
+		}
+
 		instanceID, err := ExtractAWSInstanceID(node)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("ready worker %s has invalid providerID: %w", node.Name, err)
 		}
 
 		plugMap[node.Name] = instanceID
+	}
+
+	if len(plugMap) == 0 {
+		return nil, fmt.Errorf("no worker nodes with valid AWS providerID")
 	}
 
 	return map[string]map[string]string{farparams.NodeIdentifierAWS: plugMap}, nil
@@ -220,7 +233,25 @@ func GetFARControllerPods(ctx context.Context, k8sClient client.Client) ([]corev
 	var running []corev1.Pod
 
 	for _, pod := range podList.Items {
-		if pod.Status.Phase == corev1.PodRunning && pod.DeletionTimestamp == nil {
+		if pod.Status.Phase != corev1.PodRunning || pod.DeletionTimestamp != nil {
+			continue
+		}
+
+		if len(pod.Status.ContainerStatuses) == 0 {
+			continue
+		}
+
+		allReady := true
+
+		for _, cs := range pod.Status.ContainerStatuses {
+			if !cs.Ready {
+				allReady = false
+
+				break
+			}
+		}
+
+		if allReady {
 			running = append(running, pod)
 		}
 	}
@@ -236,21 +267,4 @@ func isNodeReady(node *corev1.Node) bool {
 	}
 
 	return false
-}
-
-// ListFARControllerPodsByLabel returns FAR controller pods using the composite
-// label selector (control-plane + app name).
-func ListFARControllerPodsByLabel(ctx context.Context, k8sClient client.Client) (*corev1.PodList, error) {
-	podList := &corev1.PodList{}
-
-	if err := k8sClient.List(ctx, podList,
-		client.InNamespace(medik8sparams.OperatorNs),
-		client.MatchingLabels{
-			"control-plane":                 "controller-manager",
-			farparams.ControllerPodLabelKey: farparams.OperatorControllerPodLabel,
-		}); err != nil {
-		return nil, fmt.Errorf("failed to list FAR controller pods: %w", err)
-	}
-
-	return podList, nil
 }
