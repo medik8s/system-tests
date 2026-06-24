@@ -266,6 +266,7 @@ var _ = Describe(
 		// This test is guarded by SBR_TEST_RHWA1068=true because the bug is not yet fixed in the
 		// current operator version. Enable it once the operator fix ships.
 		It("RHWA-1068 regression: agent pods reach Ready despite /dev/watchdog held by another process",
+			reportxml.ID("88876"),
 			Label(
 				labels.OperatorSBR,
 				labels.TierAcceptance,
