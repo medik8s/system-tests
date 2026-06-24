@@ -302,7 +302,8 @@ var _ = Describe(
 						return fmt.Errorf("DaemonSet %s not found: %w", dsName, err)
 					}
 
-					if agentDS.Status.NumberReady < agentDS.Status.DesiredNumberScheduled {
+					if agentDS.Status.DesiredNumberScheduled == 0 ||
+						agentDS.Status.NumberReady < agentDS.Status.DesiredNumberScheduled {
 						return fmt.Errorf("DaemonSet %s: %d/%d pods ready — some agents may be in CrashLoopBackOff",
 							dsName, agentDS.Status.NumberReady, agentDS.Status.DesiredNumberScheduled)
 					}

@@ -687,7 +687,8 @@ func waitForSBRCReady(sbrcName string) {
 			return fmt.Errorf("DaemonSet %s not found: %w", dsName, err)
 		}
 
-		if agentDS.Status.NumberReady < agentDS.Status.DesiredNumberScheduled {
+		if agentDS.Status.DesiredNumberScheduled == 0 ||
+			agentDS.Status.NumberReady < agentDS.Status.DesiredNumberScheduled {
 			return fmt.Errorf("DaemonSet %s: %d/%d pods ready",
 				dsName, agentDS.Status.NumberReady, agentDS.Status.DesiredNumberScheduled)
 		}
