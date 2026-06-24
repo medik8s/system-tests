@@ -379,13 +379,7 @@ var _ = Describe(
 					if pullErr == nil {
 						_, _ = cleanupPod.ExecCommand([]string{
 							"nsenter", "--target", "1", "--net", "--",
-							"sh", "-c",
-							"iptables -D OUTPUT -p tcp --dport 3300 -j REJECT 2>/dev/null || true; " +
-								"iptables -D INPUT -p tcp --sport 3300 -j REJECT 2>/dev/null || true; " +
-								"iptables -D OUTPUT -p tcp --dport 6789 -j REJECT 2>/dev/null || true; " +
-								"iptables -D INPUT -p tcp --sport 6789 -j REJECT 2>/dev/null || true; " +
-								"iptables -D OUTPUT -p tcp --dport 6800:7300 -j REJECT 2>/dev/null || true; " +
-								"iptables -D INPUT -p tcp --sport 6800:7300 -j REJECT 2>/dev/null || true",
+							"sh", "-c", cephFSFlushCmd,
 						})
 						_, _ = cleanupPod.Delete()
 					}
