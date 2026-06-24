@@ -25,6 +25,14 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
+// cephFSFlushCmd removes the CephFS REJECT iptables rules injected by the detect-only storage test.
+const cephFSFlushCmd = "iptables -D OUTPUT -p tcp --dport 3300 -j REJECT 2>/dev/null || true; " +
+	"iptables -D INPUT -p tcp --sport 3300 -j REJECT 2>/dev/null || true; " +
+	"iptables -D OUTPUT -p tcp --dport 6789 -j REJECT 2>/dev/null || true; " +
+	"iptables -D INPUT -p tcp --sport 6789 -j REJECT 2>/dev/null || true; " +
+	"iptables -D OUTPUT -p tcp --dport 6800:7300 -j REJECT 2>/dev/null || true; " +
+	"iptables -D INPUT -p tcp --sport 6800:7300 -j REJECT 2>/dev/null || true"
+
 // keepalivePodName returns a valid pod name for the per-node watchdog-keepalive pod.
 func keepalivePodName(nodeName string) string {
 	safe := strings.Map(func(r rune) rune {
@@ -54,42 +62,6 @@ func deleteKeepalivePods(podNames []string) {
 		if _, delErr := kp.Delete(); delErr != nil && !k8serrors.IsNotFound(delErr) {
 			GinkgoT().Logf("Warning: delete keepalive pod %s: %v", podName, delErr)
 		}
-	}
-}
-
-// buildDetectOnlyNHC returns an unstructured NodeHealthCheck CR for the detect-only suppression test.
-func buildDetectOnlyNHC() *unstructured.Unstructured {
-	return &unstructured.Unstructured{
-		Object: map[string]interface{}{
-			"apiVersion": sbrparams.NHCAPIGroup + "/" + sbrparams.NHCAPIVersion,
-			"kind":       "NodeHealthCheck",
-			"metadata": map[string]interface{}{
-				"name": sbrparams.NHCDetectOnlyTestName,
-			},
-			"spec": map[string]interface{}{
-				"selector": map[string]interface{}{
-					"matchExpressions": []interface{}{
-						map[string]interface{}{
-							"key":      "node-role.kubernetes.io/worker",
-							"operator": "Exists",
-						},
-					},
-				},
-				"unhealthyConditions": []interface{}{
-					map[string]interface{}{
-						"type":     sbrparams.SBRStorageUnhealthyCondition,
-						"status":   string(corev1.ConditionTrue),
-						"duration": sbrparams.NHCUnhealthyDuration,
-					},
-				},
-				"remediationTemplate": map[string]interface{}{
-					"apiVersion": sbrparams.CRDGroup + "/" + sbrparams.CRDVersion,
-					"kind":       "StorageBasedRemediationTemplate",
-					"name":       sbrparams.SBRTemplateName,
-					"namespace":  medik8sparams.OperatorNs,
-				},
-			},
-		},
 	}
 }
 
@@ -142,18 +114,19 @@ var _ = Describe(
 			Expect(workerNodes).ToNot(BeEmpty(), "No schedulable worker nodes found")
 
 			targetNodeName = workerNodes[0]
-			injectorPodName = strings.TrimRight(
-				"sbr-detect-only-injector-"+strings.Map(func(r rune) rune {
-					if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
-						return r
-					}
+			injectorPodName = "sbr-detect-only-injector-" + strings.Map(func(r rune) rune {
+				if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+					return r
+				}
 
-					return '-'
-				}, strings.ToLower(targetNodeName)), "-")
+				return '-'
+			}, strings.ToLower(targetNodeName))
 
 			if len(injectorPodName) > 63 {
 				injectorPodName = injectorPodName[:63]
 			}
+
+			injectorPodName = strings.TrimRight(injectorPodName, "-")
 
 			By("Cleaning up any stale detectOnly StorageBasedRemediationConfig from a previous run")
 
@@ -254,13 +227,7 @@ var _ = Describe(
 			if pullErr == nil {
 				_, _ = cleanupPod.ExecCommand([]string{
 					"nsenter", "--target", "1", "--net", "--",
-					"sh", "-c",
-					"iptables -D OUTPUT -p tcp --dport 3300 -j REJECT 2>/dev/null || true; " +
-						"iptables -D INPUT -p tcp --sport 3300 -j REJECT 2>/dev/null || true; " +
-						"iptables -D OUTPUT -p tcp --dport 6789 -j REJECT 2>/dev/null || true; " +
-						"iptables -D INPUT -p tcp --sport 6789 -j REJECT 2>/dev/null || true; " +
-						"iptables -D OUTPUT -p tcp --dport 6800:7300 -j REJECT 2>/dev/null || true; " +
-						"iptables -D INPUT -p tcp --sport 6800:7300 -j REJECT 2>/dev/null || true",
+					"sh", "-c", cephFSFlushCmd,
 				})
 				_, _ = cleanupPod.Delete()
 			}
@@ -268,10 +235,11 @@ var _ = Describe(
 			By("AfterAll: removing detect-only StorageBasedRemediationConfig")
 
 			if detectOnlySBRC != nil {
-				if deleteErr := APIClient.Delete(context.TODO(), detectOnlySBRC); deleteErr != nil &&
-					!k8serrors.IsNotFound(deleteErr) {
-					GinkgoT().Logf("Warning: AfterAll cleanup delete %s failed: %v",
-						sbrparams.SBRCDetectOnlyTestName, deleteErr)
+				if deleteErr := APIClient.Delete(context.TODO(), detectOnlySBRC); deleteErr != nil {
+					if !k8serrors.IsNotFound(deleteErr) {
+						GinkgoT().Logf("Warning: AfterAll cleanup delete %s failed: %v",
+							sbrparams.SBRCDetectOnlyTestName, deleteErr)
+					}
 				} else {
 					Eventually(func() error {
 						getErr := APIClient.Get(context.TODO(),
@@ -375,6 +343,21 @@ var _ = Describe(
 					Expect(string(rawLogs)).ToNot(ContainSubstring(crashMsg),
 						"Agent pod %s must not log watchdog preflight failure in detect-only mode (RHWA-1068)",
 						agentPod.Name)
+
+					// If the pod restarted, the crash is in the previous (terminated) container.
+					for _, cs := range agentPod.Status.ContainerStatuses {
+						if cs.RestartCount > 0 {
+							prevLogs, prevErr := APIClient.CoreV1Interface.Pods(medik8sparams.OperatorNs).
+								GetLogs(agentPod.Name, &corev1.PodLogOptions{Previous: true}).DoRaw(context.TODO())
+							if prevErr == nil {
+								Expect(string(prevLogs)).ToNot(ContainSubstring(crashMsg),
+									"Agent pod %s previous container must not log watchdog preflight failure (RHWA-1068)",
+									agentPod.Name)
+							}
+
+							break
+						}
+					}
 				}
 			})
 
@@ -443,7 +426,7 @@ var _ = Describe(
 				if nhcInstalled {
 					By("NHC is installed — creating NodeHealthCheck CR for detect-only suppression test")
 
-					nhcCR = buildDetectOnlyNHC()
+					nhcCR = buildNHC(sbrparams.NHCDetectOnlyTestName)
 
 					if createNHCErr := APIClient.Create(context.TODO(), nhcCR); createNHCErr != nil {
 						if !k8serrors.IsAlreadyExists(createNHCErr) {
@@ -472,26 +455,18 @@ var _ = Describe(
 				By("Injecting CephFS port REJECT rules on target node")
 				// CephFS uses: 3300 (msgr2), 6789 (msgr1 mon), 6800-7300 (OSD/MDS).
 				// REJECT causes immediate RST so the SBR agent detects storage loss quickly.
-				rejectRules := [][]string{
-					{"nsenter", "--target", "1", "--net", "--",
-						"iptables", "-I", "OUTPUT", "-p", "tcp", "--dport", "3300", "-j", "REJECT"},
-					{"nsenter", "--target", "1", "--net", "--",
-						"iptables", "-I", "INPUT", "-p", "tcp", "--sport", "3300", "-j", "REJECT"},
-					{"nsenter", "--target", "1", "--net", "--",
-						"iptables", "-I", "OUTPUT", "-p", "tcp", "--dport", "6789", "-j", "REJECT"},
-					{"nsenter", "--target", "1", "--net", "--",
-						"iptables", "-I", "INPUT", "-p", "tcp", "--sport", "6789", "-j", "REJECT"},
-					{"nsenter", "--target", "1", "--net", "--",
-						"iptables", "-I", "OUTPUT", "-p", "tcp", "--dport", "6800:7300", "-j", "REJECT"},
-					{"nsenter", "--target", "1", "--net", "--",
-						"iptables", "-I", "INPUT", "-p", "tcp", "--sport", "6800:7300", "-j", "REJECT"},
-				}
-
-				for _, rule := range rejectRules {
-					_, execErr := injectorPod.ExecCommand(rule)
-					Expect(execErr).ToNot(HaveOccurred(),
-						"Failed to inject iptables rule %v on node %q", rule, targetNodeName)
-				}
+				_, injectErr := injectorPod.ExecCommand([]string{
+					"nsenter", "--target", "1", "--net", "--",
+					"sh", "-c",
+					"iptables -I OUTPUT -p tcp --dport 3300 -j REJECT; " +
+						"iptables -I INPUT -p tcp --sport 3300 -j REJECT; " +
+						"iptables -I OUTPUT -p tcp --dport 6789 -j REJECT; " +
+						"iptables -I INPUT -p tcp --sport 6789 -j REJECT; " +
+						"iptables -I OUTPUT -p tcp --dport 6800:7300 -j REJECT; " +
+						"iptables -I INPUT -p tcp --sport 6800:7300 -j REJECT",
+				})
+				Expect(injectErr).ToNot(HaveOccurred(),
+					"Failed to inject CephFS REJECT rules on node %q", targetNodeName)
 
 				By(fmt.Sprintf("Waiting for node %q to acquire %s=True",
 					targetNodeName, sbrparams.SBRStorageUnhealthyCondition))
@@ -586,20 +561,11 @@ var _ = Describe(
 
 				By("Removing CephFS REJECT rules before toggling detectOnlyMode to avoid a real fence cycle")
 
-				removePod, pullErr := pod.Pull(APIClient, injectorPodName, medik8sparams.OperatorNs)
-				if pullErr == nil {
-					_, _ = removePod.ExecCommand([]string{
-						"nsenter", "--target", "1", "--net", "--",
-						"sh", "-c",
-						"iptables -D OUTPUT -p tcp --dport 3300 -j REJECT 2>/dev/null || true; " +
-							"iptables -D INPUT -p tcp --sport 3300 -j REJECT 2>/dev/null || true; " +
-							"iptables -D OUTPUT -p tcp --dport 6789 -j REJECT 2>/dev/null || true; " +
-							"iptables -D INPUT -p tcp --sport 6789 -j REJECT 2>/dev/null || true; " +
-							"iptables -D OUTPUT -p tcp --dport 6800:7300 -j REJECT 2>/dev/null || true; " +
-							"iptables -D INPUT -p tcp --sport 6800:7300 -j REJECT 2>/dev/null || true",
-					})
-					_, _ = removePod.Delete()
-				}
+				_, _ = injectorPod.ExecCommand([]string{
+					"nsenter", "--target", "1", "--net", "--",
+					"sh", "-c", cephFSFlushCmd,
+				})
+				_, _ = injectorPod.Delete()
 
 				By("Patching StorageBasedRemediationConfig to detectOnlyMode: Disabled")
 

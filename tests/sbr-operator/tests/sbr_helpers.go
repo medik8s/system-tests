@@ -7,8 +7,10 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 
 	. "github.com/medik8s/system-tests/tests/internal/medik8sinittools"
+	"github.com/medik8s/system-tests/tests/internal/medik8sparams"
 	"github.com/medik8s/system-tests/tests/sbr-operator/internal/sbrparams"
 
+	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -47,6 +49,43 @@ func isNHCCRDInstalled() bool {
 	GinkgoWriter.Printf("isNHCCRDInstalled: List returned %v — treating NHC as not installed\n", err)
 
 	return false
+}
+
+// buildNHC returns an unstructured NodeHealthCheck CR that triggers SBR-based remediation
+// when a worker node reports SBRStorageUnhealthy=True for NHCUnhealthyDuration.
+func buildNHC(name string) *unstructured.Unstructured {
+	return &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": sbrparams.NHCAPIGroup + "/" + sbrparams.NHCAPIVersion,
+			"kind":       "NodeHealthCheck",
+			"metadata": map[string]interface{}{
+				"name": name,
+			},
+			"spec": map[string]interface{}{
+				"selector": map[string]interface{}{
+					"matchExpressions": []interface{}{
+						map[string]interface{}{
+							"key":      "node-role.kubernetes.io/worker",
+							"operator": "Exists",
+						},
+					},
+				},
+				"unhealthyConditions": []interface{}{
+					map[string]interface{}{
+						"type":     sbrparams.SBRStorageUnhealthyCondition,
+						"status":   string(corev1.ConditionTrue),
+						"duration": sbrparams.NHCUnhealthyDuration,
+					},
+				},
+				"remediationTemplate": map[string]interface{}{
+					"apiVersion": sbrparams.CRDGroup + "/" + sbrparams.CRDVersion,
+					"kind":       "StorageBasedRemediationTemplate",
+					"name":       sbrparams.SBRTemplateName,
+					"namespace":  medik8sparams.OperatorNs,
+				},
+			},
+		},
+	}
 }
 
 // cleanupNHCCR deletes the named NodeHealthCheck CR. Safe to call when CR may not exist.
