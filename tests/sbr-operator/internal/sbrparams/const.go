@@ -158,6 +158,27 @@ const (
 	// SBRCDetectOnlyTestName is the SBRC name used in the detectOnlyMode test (OCP-88876).
 	SBRCDetectOnlyTestName = "test-sbrc-detect-only"
 
+	// NHCDetectOnlyTestName is the NHC CR name used in the detect-only suppression test.
+	NHCDetectOnlyTestName = "nhc-sbr-detect-only"
+
+	// WatchdogKeepaliveNamePrefix is the name prefix for privileged pods that hold /dev/watchdog
+	// open during the RHWA-1068 regression test.
+	WatchdogKeepaliveNamePrefix = "sbr-wdog-keepalive-"
+
+	// WatchdogKeepaliveTimeout is how long to wait for all watchdog-keepalive pods to reach Running.
+	WatchdogKeepaliveTimeout = 2 * time.Minute
+
+	// DetectOnlyAllPodsReadyTimeout is how long to wait for ALL agent DaemonSet pods to reach Ready
+	// in the detect-only watchdog contention regression test (RHWA-1068).
+	DetectOnlyAllPodsReadyTimeout = 5 * time.Minute
+
+	// DetectOnlySuppressionCheckDuration is how long to Consistently assert no fencing occurs while
+	// SBRStorageUnhealthy=True and detectOnlyMode is Enabled.
+	DetectOnlySuppressionCheckDuration = 90 * time.Second
+
+	// DetectOnlySuppressionCheckInterval is the poll interval for the suppression Consistently check.
+	DetectOnlySuppressionCheckInterval = 10 * time.Second
+
 	// SBRCDaemonSetGCTimeout is how long to wait for a DaemonSet to be garbage-collected after its SBRC is deleted.
 	SBRCDaemonSetGCTimeout = 5 * time.Minute
 
