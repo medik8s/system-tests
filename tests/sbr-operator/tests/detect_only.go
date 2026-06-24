@@ -450,18 +450,26 @@ var _ = Describe(
 				By("Injecting CephFS port REJECT rules on target node")
 				// CephFS uses: 3300 (msgr2), 6789 (msgr1 mon), 6800-7300 (OSD/MDS).
 				// REJECT causes immediate RST so the SBR agent detects storage loss quickly.
-				_, injectErr := injectorPod.ExecCommand([]string{
-					"nsenter", "--target", "1", "--net", "--",
-					"sh", "-c",
-					"iptables -I OUTPUT -p tcp --dport 3300 -j REJECT; " +
-						"iptables -I INPUT -p tcp --sport 3300 -j REJECT; " +
-						"iptables -I OUTPUT -p tcp --dport 6789 -j REJECT; " +
-						"iptables -I INPUT -p tcp --sport 6789 -j REJECT; " +
-						"iptables -I OUTPUT -p tcp --dport 6800:7300 -j REJECT; " +
-						"iptables -I INPUT -p tcp --sport 6800:7300 -j REJECT",
-				})
-				Expect(injectErr).ToNot(HaveOccurred(),
-					"Failed to inject CephFS REJECT rules on node %q", targetNodeName)
+				rejectRules := [][]string{
+					{"nsenter", "--target", "1", "--net", "--",
+						"iptables", "-I", "OUTPUT", "-p", "tcp", "--dport", "3300", "-j", "REJECT"},
+					{"nsenter", "--target", "1", "--net", "--",
+						"iptables", "-I", "INPUT", "-p", "tcp", "--sport", "3300", "-j", "REJECT"},
+					{"nsenter", "--target", "1", "--net", "--",
+						"iptables", "-I", "OUTPUT", "-p", "tcp", "--dport", "6789", "-j", "REJECT"},
+					{"nsenter", "--target", "1", "--net", "--",
+						"iptables", "-I", "INPUT", "-p", "tcp", "--sport", "6789", "-j", "REJECT"},
+					{"nsenter", "--target", "1", "--net", "--",
+						"iptables", "-I", "OUTPUT", "-p", "tcp", "--dport", "6800:7300", "-j", "REJECT"},
+					{"nsenter", "--target", "1", "--net", "--",
+						"iptables", "-I", "INPUT", "-p", "tcp", "--sport", "6800:7300", "-j", "REJECT"},
+				}
+
+				for _, rule := range rejectRules {
+					_, execErr := injectorPod.ExecCommand(rule)
+					Expect(execErr).ToNot(HaveOccurred(),
+						"Failed to inject iptables rule %v on node %q", rule, targetNodeName)
+				}
 
 				By(fmt.Sprintf("Waiting for node %q to acquire %s=True",
 					targetNodeName, sbrparams.SBRStorageUnhealthyCondition))
