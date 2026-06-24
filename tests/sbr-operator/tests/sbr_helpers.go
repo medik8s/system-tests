@@ -49,7 +49,7 @@ func isNHCCRDInstalled() bool {
 	return false
 }
 
-// cleanupNHCCR force-deletes the named NodeHealthCheck CR. Safe to call when CR may not exist.
+// cleanupNHCCR deletes the named NodeHealthCheck CR. Safe to call when CR may not exist.
 func cleanupNHCCR(name string) {
 	nhc := &unstructured.Unstructured{}
 	nhc.SetAPIVersion(sbrparams.NHCAPIGroup + "/" + sbrparams.NHCAPIVersion)
