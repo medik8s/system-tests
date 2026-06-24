@@ -155,6 +155,12 @@ const (
 	// InjectorPodName is the name prefix for privileged host-namespace pods used in SBR disruptive tests.
 	InjectorPodName = "sbr-storage-injector"
 
+	// SBRCDetectOnlyTestName is the SBRC name used in the detectOnlyMode test (OCP-88876).
+	SBRCDetectOnlyTestName = "test-sbrc-detect-only"
+
+	// SBRCDaemonSetGCTimeout is how long to wait for a DaemonSet to be garbage-collected after its SBRC is deleted.
+	SBRCDaemonSetGCTimeout = 5 * time.Minute
+
 	// FencingSucceededCondition is the condition type set on a StorageBasedRemediation CR after fencing.
 	FencingSucceededCondition = "FencingSucceeded"
 
@@ -178,6 +184,7 @@ const (
 
 	// StorageLossWriteInjectorPodName is the injector pod name prefix for the write-only test.
 	StorageLossWriteInjectorPodName = "sbr-write-injector"
+
 	// SBRCTransientTestName is the SBRC name for the transient storage failure self-healing test.
 	SBRCTransientTestName = "test-sbrc-transient"
 
