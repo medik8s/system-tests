@@ -101,9 +101,8 @@ func transientSBRCRCount() (int, error) {
 
 // transientInjectCephFSBlock inserts iptables OUTPUT REJECT rules to cut CephFS write traffic.
 // Blocking OUTPUT only is sufficient: the agent cannot write heartbeats, peers detect a stale
-// heartbeat and set SBRStorageUnhealthy=True. Uses nsenter --target 1 --net to enter the host
-// network namespace and the container's iptables binary — the same approach used in the
-// write-only storage loss test (OCP-89200), validated on RHCOS 4.22.
+// heartbeat and set SBRStorageUnhealthy=True. Uses nsenter --target 1 --net --mount to enter
+// the host network and mount namespaces so the host's iptables binary is used.
 //
 // Calls Skip when iptables returns a non-zero exit code so that CI runs on nodes where the
 // OUTPUT chain is not writable do not hard-fail.
@@ -111,11 +110,11 @@ func transientInjectCephFSBlock(injectorPod *pod.Builder, nodeName string) {
 	By(fmt.Sprintf("Injecting CephFS iptables OUTPUT REJECT rules on node %s", nodeName))
 
 	rejectRules := [][]string{
-		{"nsenter", "--target", "1", "--net", "iptables", "-I", "OUTPUT",
+		{"nsenter", "--target", "1", "--net", "--mount", "--", "iptables", "-I", "OUTPUT",
 			"-p", "tcp", "--dport", "3300", "-j", "REJECT"},
-		{"nsenter", "--target", "1", "--net", "iptables", "-I", "OUTPUT",
+		{"nsenter", "--target", "1", "--net", "--mount", "--", "iptables", "-I", "OUTPUT",
 			"-p", "tcp", "--dport", "6789", "-j", "REJECT"},
-		{"nsenter", "--target", "1", "--net", "iptables", "-I", "OUTPUT",
+		{"nsenter", "--target", "1", "--net", "--mount", "--", "iptables", "-I", "OUTPUT",
 			"-p", "tcp", "--match", "multiport", "--dports", "6800:7300", "-j", "REJECT"},
 	}
 
@@ -131,11 +130,11 @@ func transientInjectCephFSBlock(injectorPod *pod.Builder, nodeName string) {
 // Failures are logged as warnings; cleanup must be best-effort so the node is not left blocked.
 func transientRemoveCephFSBlock(injectorPod *pod.Builder) {
 	cleanupRules := [][]string{
-		{"nsenter", "--target", "1", "--net", "iptables", "-D", "OUTPUT",
+		{"nsenter", "--target", "1", "--net", "--mount", "--", "iptables", "-D", "OUTPUT",
 			"-p", "tcp", "--dport", "3300", "-j", "REJECT"},
-		{"nsenter", "--target", "1", "--net", "iptables", "-D", "OUTPUT",
+		{"nsenter", "--target", "1", "--net", "--mount", "--", "iptables", "-D", "OUTPUT",
 			"-p", "tcp", "--dport", "6789", "-j", "REJECT"},
-		{"nsenter", "--target", "1", "--net", "iptables", "-D", "OUTPUT",
+		{"nsenter", "--target", "1", "--net", "--mount", "--", "iptables", "-D", "OUTPUT",
 			"-p", "tcp", "--match", "multiport", "--dports", "6800:7300", "-j", "REJECT"},
 	}
 

@@ -226,7 +226,7 @@ var _ = Describe(
 			cleanupPod, pullErr := pod.Pull(APIClient, injectorPodName, medik8sparams.OperatorNs)
 			if pullErr == nil {
 				_, _ = cleanupPod.ExecCommand([]string{
-					"nsenter", "--target", "1", "--net", "--",
+					"nsenter", "--target", "1", "--net", "--mount", "--",
 					"sh", "-c", cephFSFlushCmd,
 				})
 				_, _ = cleanupPod.Delete()
@@ -379,7 +379,7 @@ var _ = Describe(
 					cleanupPod, pullErr := pod.Pull(APIClient, injectorPodName, medik8sparams.OperatorNs)
 					if pullErr == nil {
 						_, _ = cleanupPod.ExecCommand([]string{
-							"nsenter", "--target", "1", "--net", "--",
+							"nsenter", "--target", "1", "--net", "--mount", "--",
 							"sh", "-c", cephFSFlushCmd,
 						})
 						_, _ = cleanupPod.Delete()
@@ -452,17 +452,17 @@ var _ = Describe(
 				// CephFS uses: 3300 (msgr2), 6789 (msgr1 mon), 6800-7300 (OSD/MDS).
 				// REJECT causes immediate RST so the SBR agent detects storage loss quickly.
 				rejectRules := [][]string{
-					{"nsenter", "--target", "1", "--net", "--",
+					{"nsenter", "--target", "1", "--net", "--mount", "--",
 						"iptables", "-I", "OUTPUT", "-p", "tcp", "--dport", "3300", "-j", "REJECT"},
-					{"nsenter", "--target", "1", "--net", "--",
+					{"nsenter", "--target", "1", "--net", "--mount", "--",
 						"iptables", "-I", "INPUT", "-p", "tcp", "--sport", "3300", "-j", "REJECT"},
-					{"nsenter", "--target", "1", "--net", "--",
+					{"nsenter", "--target", "1", "--net", "--mount", "--",
 						"iptables", "-I", "OUTPUT", "-p", "tcp", "--dport", "6789", "-j", "REJECT"},
-					{"nsenter", "--target", "1", "--net", "--",
+					{"nsenter", "--target", "1", "--net", "--mount", "--",
 						"iptables", "-I", "INPUT", "-p", "tcp", "--sport", "6789", "-j", "REJECT"},
-					{"nsenter", "--target", "1", "--net", "--",
+					{"nsenter", "--target", "1", "--net", "--mount", "--",
 						"iptables", "-I", "OUTPUT", "-p", "tcp", "--dport", "6800:7300", "-j", "REJECT"},
-					{"nsenter", "--target", "1", "--net", "--",
+					{"nsenter", "--target", "1", "--net", "--mount", "--",
 						"iptables", "-I", "INPUT", "-p", "tcp", "--sport", "6800:7300", "-j", "REJECT"},
 				}
 
@@ -566,7 +566,7 @@ var _ = Describe(
 				By("Removing CephFS REJECT rules before toggling detectOnlyMode to avoid a real fence cycle")
 
 				_, _ = injectorPod.ExecCommand([]string{
-					"nsenter", "--target", "1", "--net", "--",
+					"nsenter", "--target", "1", "--net", "--mount", "--",
 					"sh", "-c", cephFSFlushCmd,
 				})
 				_, _ = injectorPod.Delete()

@@ -269,7 +269,7 @@ var _ = Describe(
 			cleanupPod, pullErr := pod.Pull(APIClient, injectorPodName, medik8sparams.OperatorNs)
 			if pullErr == nil {
 				_, flushErr := cleanupPod.ExecCommand([]string{
-					"nsenter", "--target", "1", "--net", "--",
+					"nsenter", "--target", "1", "--net", "--mount", "--",
 					"sh", "-c",
 					"iptables -D OUTPUT -p tcp --dport 3300 -j REJECT 2>/dev/null || true; " +
 						"iptables -D INPUT -p tcp --sport 3300 -j REJECT 2>/dev/null || true; " +
@@ -305,7 +305,7 @@ var _ = Describe(
 					cleanupPod, pullErr := pod.Pull(APIClient, injectorPodName, medik8sparams.OperatorNs)
 					if pullErr == nil {
 						_, flushErr := cleanupPod.ExecCommand([]string{
-							"nsenter", "--target", "1", "--net", "--",
+							"nsenter", "--target", "1", "--net", "--mount", "--",
 							"sh", "-c",
 							"iptables -D OUTPUT -p tcp --dport 3300 -j REJECT 2>/dev/null || true; " +
 								"iptables -D INPUT -p tcp --sport 3300 -j REJECT 2>/dev/null || true; " +
@@ -366,17 +366,17 @@ var _ = Describe(
 				// REJECT causes immediate RST so the SBR agent detects storage loss quickly.
 				// Both INPUT and OUTPUT are blocked so the isolated node cannot reach monitors/OSDs.
 				rejectRules := [][]string{
-					{"nsenter", "--target", "1", "--net", "--",
+					{"nsenter", "--target", "1", "--net", "--mount", "--",
 						"iptables", "-I", "OUTPUT", "-p", "tcp", "--dport", "3300", "-j", "REJECT"},
-					{"nsenter", "--target", "1", "--net", "--",
+					{"nsenter", "--target", "1", "--net", "--mount", "--",
 						"iptables", "-I", "INPUT", "-p", "tcp", "--sport", "3300", "-j", "REJECT"},
-					{"nsenter", "--target", "1", "--net", "--",
+					{"nsenter", "--target", "1", "--net", "--mount", "--",
 						"iptables", "-I", "OUTPUT", "-p", "tcp", "--dport", "6789", "-j", "REJECT"},
-					{"nsenter", "--target", "1", "--net", "--",
+					{"nsenter", "--target", "1", "--net", "--mount", "--",
 						"iptables", "-I", "INPUT", "-p", "tcp", "--sport", "6789", "-j", "REJECT"},
-					{"nsenter", "--target", "1", "--net", "--",
+					{"nsenter", "--target", "1", "--net", "--mount", "--",
 						"iptables", "-I", "OUTPUT", "-p", "tcp", "--dport", "6800:7300", "-j", "REJECT"},
-					{"nsenter", "--target", "1", "--net", "--",
+					{"nsenter", "--target", "1", "--net", "--mount", "--",
 						"iptables", "-I", "INPUT", "-p", "tcp", "--sport", "6800:7300", "-j", "REJECT"},
 				}
 

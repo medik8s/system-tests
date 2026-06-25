@@ -272,7 +272,7 @@ var _ = Describe(
 							// Best-effort: flush DROP-all rules injected via the fallback path.
 							// Iptables rules persist in the host kernel after pod deletion.
 							_, _ = existing.ExecCommand([]string{
-								"nsenter", "-t", "1", "--net", "--", "sh", "-c",
+								"nsenter", "-t", "1", "--net", "--mount", "--", "sh", "-c",
 								"iptables -D INPUT -j DROP 2>/dev/null; iptables -D OUTPUT -j DROP 2>/dev/null || true",
 							})
 						}
@@ -313,7 +313,7 @@ var _ = Describe(
 					// Uses --pid to enter the host PID namespace so the timer process is adopted
 					// by init and survives container termination.
 					_, _ = injectorPod.ExecCommand([]string{
-						"nsenter", "-t", "1", "--pid", "--net", "--", "sh", "-c",
+						"nsenter", "-t", "1", "--pid", "--net", "--mount", "--", "sh", "-c",
 						"(sleep 300 && iptables -D INPUT -j DROP && iptables -D OUTPUT -j DROP) & " +
 							"iptables -I INPUT -j DROP && iptables -I OUTPUT -j DROP",
 					})

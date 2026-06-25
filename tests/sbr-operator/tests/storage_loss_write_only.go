@@ -351,11 +351,11 @@ var _ = Describe(
 						// Delete rules individually to avoid flushing the whole OUTPUT chain
 						// which could affect other concurrent tests.
 						outputRulesCleanup := [][]string{
-							{"nsenter", "--target", "1", "--net",
+							{"nsenter", "--target", "1", "--net", "--mount", "--",
 								"iptables", "-D", "OUTPUT", "-p", "tcp", "--dport", "3300", "-j", "REJECT"},
-							{"nsenter", "--target", "1", "--net",
+							{"nsenter", "--target", "1", "--net", "--mount", "--",
 								"iptables", "-D", "OUTPUT", "-p", "tcp", "--dport", "6789", "-j", "REJECT"},
-							{"nsenter", "--target", "1", "--net",
+							{"nsenter", "--target", "1", "--net", "--mount", "--",
 								"iptables", "-D", "OUTPUT", "-p", "tcp", "--match", "multiport",
 								"--dports", "6800:7300", "-j", "REJECT"},
 						}
@@ -430,11 +430,11 @@ var _ = Describe(
 				// the fence message written by peers into shared storage, which triggers self-fencing.
 				// This is the key distinction from OCP-88880 (full bidirectional block).
 				rejectRules := [][]string{
-					{"nsenter", "--target", "1", "--net",
+					{"nsenter", "--target", "1", "--net", "--mount", "--",
 						"iptables", "-I", "OUTPUT", "-p", "tcp", "--dport", "3300", "-j", "REJECT"},
-					{"nsenter", "--target", "1", "--net",
+					{"nsenter", "--target", "1", "--net", "--mount", "--",
 						"iptables", "-I", "OUTPUT", "-p", "tcp", "--dport", "6789", "-j", "REJECT"},
-					{"nsenter", "--target", "1", "--net",
+					{"nsenter", "--target", "1", "--net", "--mount", "--",
 						"iptables", "-I", "OUTPUT", "-p", "tcp", "--match", "multiport",
 						"--dports", "6800:7300", "-j", "REJECT"},
 				}
