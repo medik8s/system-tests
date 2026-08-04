@@ -388,7 +388,7 @@ var _ = Describe("FAR Observability Tests",
 
 					DeferCleanup(func() {
 						By("Deleting timed-out FAR CR " + farCRName)
-						deleteRemediationCR(ctx, APIClient, farGVK, farCRName)
+						_ = deleteRemediationCR(ctx, APIClient, farGVK, farCRName)
 					})
 
 					waitDuration := time.Duration(retryCount) * (retryIntervalDuration + farparams.TimedOutRetryBuffer)
