@@ -263,3 +263,23 @@ Deletes the FAR controller pods to isolate logs, then creates a FAR CR with an i
 - **Labels**: `disruption:nondestructive`, `platform:aws`, `component:remediation`, `tier:acceptance`, `frequency:weekly`
 - **Standalone**: `ginkgo --label-filter="far" --focus="timeout messages matching retry count" ./tests/far-operator/...`
 - **Pass criteria**: the active FAR controller log contains exactly 10 (`FARCRRetryCount`) `command failed` entries, one per retry
+
+## NHC+FAR Interop Tests
+
+Tests validating integration between Node Healthcheck (NHC) and Fence Agents Remediation (FAR) through FenceAgentsRemediationTemplate (FART).
+
+### 22. Verify NHC-Triggered FAR Remediation via FART ([OCP-61309](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-61309))
+
+Triggers FAR remediation through an NHC resource and FART template after stopping kubelet on a worker node.
+
+### 23. Verify NHC+FAR Default Reboot When FART Omits Action ([OCP-66204](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-66204))
+
+Validates that FAR defaults to reboot when the FART omits the action parameter.
+
+### 24. Verify FAR Controller Logs During NHC-Triggered Remediation ([OCP-70872](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-70872))
+
+Validates expected FAR controller log messages during NHC-triggered remediation.
+
+### 25. Verify Full NHC+FAR Interop Lifecycle ([OCP-90159](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-90159))
+
+Validates FAR CR completion, node recovery, schedulability, and removal of the FAR NoSchedule taint.
