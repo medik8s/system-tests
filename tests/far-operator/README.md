@@ -238,3 +238,54 @@ Validates FAR operator behavior when all worker nodes are cordoned, simulating a
 - **Env vars (required)**: AWS credentials provisioned by the `medik8s-aws-credentials` CI step
 - **Standalone**: `ginkgo --label-filter="far && topology:zero-worker" ./tests/far-operator/...`
 - **Pass criteria**: FAR deployment Ready before test, FAR deployment has 0 Ready replicas after pods deleted on cordoned workers, FAR deployment recovers to 2 Ready replicas after uncordoning
+## NHC+FAR Interop Tests
+
+Tests validating the integration between Node Healthcheck (NHC) and Fence Agents Remediation (FAR) operators. NHC detects unhealthy nodes and triggers FAR-based fencing via FenceAgentsRemediationTemplate (FART).
+
+### 20. Verify NHC-Triggered FAR Remediation via FART ([OCP-61309](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-61309))
+
+Creates an NHC resource pointing to a FART, stops kubelet on a worker node, and validates that NHC detects the unhealthy node and triggers FAR remediation via the FART template.
+
+- **Operators**: FAR + NHC
+- **Cluster**: AWS IPI, 3+ worker nodes
+- **Storage**: None
+- **Environment**: Connected
+- **Labels**: `operator:far`, `operator:nhc`, `operator:interop`, `tier:acceptance`, `disruption:destructive`, `platform:aws`, `frequency:weekly`
+- **Standalone**: `ginkgo --label-filter="far && nhc && interop" --focus="NHC uses FART" ./tests/far-operator/...`
+- **Pass criteria**: Node reboots (boot ID changes), node returns to Ready
+
+### 21. Verify NHC+FAR Default Reboot When FART Omits Action ([OCP-66204](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-66204))
+
+Creates a FART without the `--action` shared parameter and validates that FAR defaults to reboot when NHC triggers remediation.
+
+- **Operators**: FAR + NHC
+- **Cluster**: AWS IPI, 3+ worker nodes
+- **Storage**: None
+- **Environment**: Connected
+- **Labels**: `operator:far`, `operator:nhc`, `operator:interop`, `tier:acceptance`, `disruption:destructive`, `platform:aws`, `frequency:weekly`
+- **Standalone**: `ginkgo --label-filter="far && nhc && interop" --focus="FART omits action" ./tests/far-operator/...`
+- **Pass criteria**: Node reboots despite no explicit action parameter
+
+### 22. Verify FAR Controller Logs During NHC-Triggered Remediation ([OCP-70872](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-70872))
+
+Triggers NHC-initiated FAR remediation and validates that the FAR controller emits expected log messages: remediation started, fence agent invocation, taint application, and remediation completion.
+
+- **Operators**: FAR + NHC
+- **Cluster**: AWS IPI, 3+ worker nodes
+- **Storage**: None
+- **Environment**: Connected
+- **Labels**: `operator:far`, `operator:nhc`, `operator:interop`, `tier:acceptance`, `disruption:destructive`, `platform:aws`, `frequency:weekly`
+- **Standalone**: `ginkgo --label-filter="far && nhc && interop" --focus="expected FAR controller log" ./tests/far-operator/...`
+- **Pass criteria**: FAR controller logs contain "Remediation started", "Fence agent", "Taint was added", "Remediation finished"
+
+### 23. Verify Full NHC+FAR Interop Lifecycle ([OCP-90159](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-90159))
+
+Triggers NHC-initiated FAR remediation and validates the complete lifecycle: FAR CR existence during remediation, FAR CR reaching Succeeded condition, node returning to Ready and schedulable, and FAR NoSchedule taint removal.
+
+- **Operators**: FAR + NHC
+- **Cluster**: AWS IPI, 3+ worker nodes
+- **Storage**: None
+- **Environment**: Connected
+- **Labels**: `operator:far`, `operator:nhc`, `operator:interop`, `tier:interop`, `disruption:destructive`, `platform:aws`, `frequency:weekly`
+- **Standalone**: `ginkgo --label-filter="far && nhc && interop" --focus="full NHC+FAR interop lifecycle" ./tests/far-operator/...`
+- **Pass criteria**: FAR CR exists during remediation, FAR CR reaches Succeeded, node Ready and schedulable, FAR taint removed

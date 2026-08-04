@@ -64,11 +64,17 @@ const (
 	// NodeReadyTimeout is how long to wait for a node to become Ready after reboot.
 	NodeReadyTimeout = 10 * time.Minute
 
+	// NodeNotReadyTimeout is how long to wait for a node to become NotReady after kubelet stop.
+	NodeNotReadyTimeout = 5 * time.Minute
+
 	// NodeRebootTimeout is how long to wait for a node reboot to complete.
 	NodeRebootTimeout = 6 * time.Minute
 
 	// OcDebugTimeout is the timeout for oc debug node commands.
-	OcDebugTimeout = 60 * time.Second
+	// Matches SNR's timeout (snrparams.OcDebugTimeout). In Prow CI on AWS,
+	// oc debug pod startup (schedule + image pull + attach) routinely takes
+	// 30-90s; 60s caused deterministic failures in interop tests.
+	OcDebugTimeout = 5 * time.Minute
 
 	// FARConditionTimeout is how long to wait for a FAR CR condition to appear.
 	FARConditionTimeout = 2 * time.Minute
@@ -147,6 +153,22 @@ const (
 
 	// TestCordonAnnotation marks nodes cordoned by the test for cleanup identification.
 	TestCordonAnnotation = "system-tests.medik8s.io/cordoned-for-topology-test"
+
+	// NHCInteropLabelKey is the label applied to the target node during NHC interop tests
+	// to scope the NHC selector to a single node.
+	NHCInteropLabelKey = "e2e.medik8s.io/far-nhc-target"
+
+	// NHCDetectionTimeout is how long to wait for NHC to detect an unhealthy node
+	// and create a FAR CR.
+	NHCDetectionTimeout = 5 * time.Minute
+
+	// NHCRecoveryTimeout is how long to wait for NHC to clear unhealthy state
+	// after the node recovers.
+	NHCRecoveryTimeout = 5 * time.Minute
+
+	// NHCUnhealthyDuration is the duration a node must be unhealthy before NHC
+	// triggers remediation. Kept short for test speed.
+	NHCUnhealthyDuration = "30s"
 )
 
 // WorkloadTestImage is the container image used for test workload pods.
