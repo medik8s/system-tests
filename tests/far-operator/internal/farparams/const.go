@@ -186,6 +186,27 @@ const (
 	// worker must exist for it to reschedule onto while the target reboots. The timed-out
 	// spec needs only ExpectedReplicas nodes; this gate is driven by must-gather.
 	MinWorkersForObservabilityTests = int(ExpectedReplicas) + 1
+
+	// NodeNotReadyTimeout is how long to wait for a node to become NotReady after kubelet stop.
+	NodeNotReadyTimeout = 5 * time.Minute
+	// SSHTimeout is the timeout for SSH-based node operations.
+	SSHTimeout = 30 * time.Second
+	// NHCEnabledTimeout is how long to wait for a test NodeHealthCheck to become enabled.
+	NHCEnabledTimeout = 2 * time.Minute
+	// ControllerLogsTimeout is the deadline for collecting controller logs.
+	ControllerLogsTimeout = 1 * time.Minute
+	// ControllerRBACTimeout is the deadline for collecting controller RBAC diagnostics.
+	ControllerRBACTimeout = 15 * time.Second
+	// NHCInteropLabelKey scopes the NHC selector to the target node.
+	NHCInteropLabelKey = "e2e.medik8s.io/far-nhc-target"
+	// NHCDetectionTimeout is how long to wait for NHC to create a FAR CR.
+	NHCDetectionTimeout = 5 * time.Minute
+	// NHCRecoveryTimeout is how long to wait for NHC to clear unhealthy state.
+	NHCRecoveryTimeout = 5 * time.Minute
+	// NHCUnhealthyDuration is the duration before NHC triggers remediation.
+	NHCUnhealthyDuration = "30s"
+	// NHCEnabledPhase is the phase reported when NHC watches selected nodes.
+	NHCEnabledPhase = "Enabled"
 )
 
 // WorkloadTestImage is the container image used for test workload pods.
