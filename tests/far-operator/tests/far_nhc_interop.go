@@ -407,6 +407,210 @@ var _ = Describe("NHC+FAR Interop",
 					}
 				}, farparams.NHCRecoveryTimeout, farparams.DefaultPollInterval).Should(Succeed())
 			})
+
+		It("should clean up FAR taints when NHC deletes the FAR CR after node recovery",
+			reportxml.ID("90264"),
+			Label(labels.TierAcceptance, labels.ComponentRemediation),
+			func() {
+				nodeName, oldBootID := triggerNHCRemediation("nhc-far-taint-cleanup", true)
+
+				By("Verifying FAR NoSchedule taint is applied to " + nodeName)
+
+				Eventually(func(g Gomega) {
+					node := &corev1.Node{}
+					g.Expect(APIClient.Get(ctx, client.ObjectKey{Name: nodeName}, node)).To(Succeed())
+
+					found := false
+
+					for _, taint := range node.Spec.Taints {
+						if taint.Key == farparams.FARNoScheduleTaintKey {
+							found = true
+
+							break
+						}
+					}
+
+					g.Expect(found).To(BeTrue(),
+						"FAR NoSchedule taint not found on node %s", nodeName)
+				}, farparams.FARConditionTimeout, farparams.DefaultPollInterval).Should(Succeed())
+
+				By("Waiting for node to reboot and become Ready (fence_aws + kubelet restart)")
+				waitForRemediation(ctx, APIClient, nodeName, oldBootID)
+
+				By("Waiting for NHC to detect healthy node and delete FAR CR")
+
+				Eventually(func() bool {
+					farObj := &unstructured.Unstructured{}
+					farObj.SetGroupVersionKind(farGVK)
+
+					err := APIClient.Get(ctx, client.ObjectKey{
+						Name: nodeName, Namespace: medik8sparams.OperatorNs,
+					}, farObj)
+
+					return k8serrors.IsNotFound(err)
+				}, farparams.FARCRGoneTimeout, farparams.DefaultPollInterval).Should(BeTrue(),
+					"NHC should delete FAR CR for %s via HandleHealthyNode after node recovery",
+					nodeName)
+
+				By("Asserting all FAR-applied taints are removed from " + nodeName)
+
+				Eventually(func(g Gomega) {
+					node := &corev1.Node{}
+					g.Expect(APIClient.Get(ctx, client.ObjectKey{Name: nodeName}, node)).To(Succeed())
+
+					for _, taint := range node.Spec.Taints {
+						g.Expect(taint.Key).ToNot(Equal(farparams.FARNoScheduleTaintKey),
+							"FAR NoSchedule taint still present on %s after CR deletion", nodeName)
+						g.Expect(taint.Key).ToNot(Equal(farparams.FAROutOfServiceTaintKey),
+							"out-of-service taint still present on %s after CR deletion", nodeName)
+					}
+				}, farparams.NHCTaintCleanupTimeout, farparams.DefaultPollInterval).Should(Succeed())
+
+				By("Verifying taints stay absent (no NHC re-remediation)")
+
+				Consistently(func(g Gomega) {
+					node := &corev1.Node{}
+					g.Expect(APIClient.Get(ctx, client.ObjectKey{Name: nodeName}, node)).To(Succeed())
+
+					for _, taint := range node.Spec.Taints {
+						g.Expect(taint.Key).ToNot(Equal(farparams.FARNoScheduleTaintKey))
+					}
+				}, 30*time.Second, farparams.DefaultPollInterval).Should(Succeed(),
+					"FAR taint reappeared on %s within stabilization window", nodeName)
+			})
+
+		It("should delete FAR CR cleanly when target node is already gone",
+			reportxml.ID("90265"),
+			Label(labels.TierAcceptance, labels.ComponentRemediation),
+			func() {
+				By("Selecting a non-leader worker node")
+
+				targetNode, err := helpers.SelectWorkerNode(ctx, APIClient, leaderNode)
+				Expect(err).ToNot(HaveOccurred())
+
+				currentTargetNode = targetNode.Name
+
+				By("Creating FAR CR targeting " + targetNode.Name)
+
+				farCR := buildFARUnstructured(targetNode.Name, fenceAgent, sharedParams, nodeParams)
+				createFARCR(ctx, APIClient, farCR)
+
+				By("Waiting for FAR NoSchedule taint on " + targetNode.Name)
+
+				Eventually(func(g Gomega) {
+					node := &corev1.Node{}
+					g.Expect(APIClient.Get(ctx, client.ObjectKey{Name: targetNode.Name}, node)).To(Succeed())
+
+					found := false
+
+					for _, taint := range node.Spec.Taints {
+						if taint.Key == farparams.FARNoScheduleTaintKey {
+							found = true
+
+							break
+						}
+					}
+
+					g.Expect(found).To(BeTrue(),
+						"FAR NoSchedule taint not found on %s", targetNode.Name)
+				}, farparams.FARConditionTimeout, farparams.DefaultPollInterval).Should(Succeed())
+
+				By("Verifying FAR CR has finalizer before proceeding")
+
+				farObj := &unstructured.Unstructured{}
+				farObj.SetGroupVersionKind(farGVK)
+				Expect(APIClient.Get(ctx, client.ObjectKey{
+					Name: targetNode.Name, Namespace: medik8sparams.OperatorNs,
+				}, farObj)).To(Succeed())
+				Expect(farObj.GetFinalizers()).ToNot(BeEmpty(),
+					"FAR CR should have a finalizer before testing deletion path")
+
+				By("Recording FAR controller pod restart count")
+
+				farPods := &corev1.PodList{}
+				Expect(APIClient.List(ctx, farPods,
+					client.InNamespace(medik8sparams.OperatorNs),
+					client.MatchingLabels(farparams.OperatorControllerPodLabels))).To(Succeed())
+
+				preDeleteRestarts := int32(0)
+
+				for i := range farPods.Items {
+					for _, cs := range farPods.Items[i].Status.ContainerStatuses {
+						preDeleteRestarts += cs.RestartCount
+					}
+				}
+
+				By("Stopping kubelet on " + targetNode.Name + " to prevent node re-registration")
+
+				Expect(stopKubeletForRemediation(ctx, targetNode.Name)).To(Succeed(),
+					"Failed to stop kubelet on %s", targetNode.Name)
+
+				By("Deleting Node object " + targetNode.Name)
+
+				nodeObj := &corev1.Node{}
+				Expect(APIClient.Get(ctx, client.ObjectKey{Name: targetNode.Name}, nodeObj)).To(Succeed())
+				Expect(APIClient.Delete(ctx, nodeObj)).To(Succeed(),
+					"Failed to delete Node %s", targetNode.Name)
+
+				By("Verifying Node object is gone")
+
+				Eventually(func() bool {
+					err := APIClient.Get(ctx, client.ObjectKey{Name: targetNode.Name}, &corev1.Node{})
+
+					return k8serrors.IsNotFound(err)
+				}, 30*time.Second, farparams.DefaultPollInterval).Should(BeTrue(),
+					"Node %s should be deleted", targetNode.Name)
+
+				By("Deleting FAR CR to trigger nil-safe handleFARDeletion")
+
+				deleteRemediationCR(ctx, APIClient, farGVK, targetNode.Name)
+
+				By("Asserting FAR CR is fully deleted (finalizer cleared)")
+
+				Eventually(func() bool {
+					fresh := &unstructured.Unstructured{}
+					fresh.SetGroupVersionKind(farGVK)
+
+					err := APIClient.Get(ctx, client.ObjectKey{
+						Name: targetNode.Name, Namespace: medik8sparams.OperatorNs,
+					}, fresh)
+
+					return k8serrors.IsNotFound(err)
+				}, farparams.FARCRGoneTimeout, farparams.DefaultPollInterval).Should(BeTrue(),
+					"FAR CR %s should be fully deleted after node removal", targetNode.Name)
+
+				By("Verifying FAR controller did not crash during deletion")
+
+				postDeleteRestarts := int32(0)
+
+				Expect(APIClient.List(ctx, farPods,
+					client.InNamespace(medik8sparams.OperatorNs),
+					client.MatchingLabels(farparams.OperatorControllerPodLabels))).To(Succeed())
+
+				for i := range farPods.Items {
+					for _, cs := range farPods.Items[i].Status.ContainerStatuses {
+						postDeleteRestarts += cs.RestartCount
+					}
+				}
+
+				Expect(postDeleteRestarts).To(Equal(preDeleteRestarts),
+					"FAR controller restarted during node-gone CR deletion "+
+						"(pre=%d, post=%d)", preDeleteRestarts, postDeleteRestarts)
+
+				By("Starting kubelet to allow node re-registration")
+				startKubeletAfterRemediation(ctx, targetNode.Name)
+
+				By("Waiting for node to re-register and become Ready")
+
+				Eventually(func() bool {
+					node := &corev1.Node{}
+					err := APIClient.Get(ctx, client.ObjectKey{Name: targetNode.Name}, node)
+
+					return err == nil && helpers.IsNodeReady(node)
+				}, farparams.NodeReadyTimeout, farparams.DefaultPollInterval).Should(BeTrue(),
+					"Node %s should re-register and become Ready after kubelet restart",
+					targetNode.Name)
+			})
 	})
 
 func buildNHCUnstructured(

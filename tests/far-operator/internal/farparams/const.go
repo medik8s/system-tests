@@ -166,6 +166,17 @@ const (
 	// after the node recovers.
 	NHCRecoveryTimeout = 5 * time.Minute
 
+	// FAROutOfServiceTaintKey is the taint key applied by FAR for the OutOfServiceTaint strategy.
+	FAROutOfServiceTaintKey = "node.kubernetes.io/out-of-service"
+
+	// NHCTaintCleanupTimeout is how long to wait for taints to be removed
+	// after NHC deletes a FAR CR via HandleHealthyNode.
+	NHCTaintCleanupTimeout = 3 * time.Minute
+
+	// FARCRGoneTimeout is how long to wait for a FAR CR to be fully deleted
+	// (finalizer cleared and object gone).
+	FARCRGoneTimeout = 3 * time.Minute
+
 	// NHCUnhealthyDuration is the duration a node must be unhealthy before NHC
 	// triggers remediation. Kept short for test speed.
 	NHCUnhealthyDuration = "30s"
