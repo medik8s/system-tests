@@ -372,6 +372,88 @@ func StartKubeletSSH(
 	return err
 }
 
+// DisableKubeletSSH disables and stops kubelet on the target node via SSH.
+// Unlike StopKubeletSSH, kubelet will NOT restart after a node reboot.
+// Used by NHC escalation tests where the node must remain unhealthy
+// even after SNR reboots it, forcing escalation to the next remediator.
+// Callers MUST register a DeferCleanup with EnableKubeletSSH.
+func DisableKubeletSSH(
+	ctx context.Context, k8sClient client.Client,
+	nodeName string, timeout time.Duration,
+) error {
+	ip, err := GetNodeInternalIP(ctx, k8sClient, nodeName)
+	if err != nil {
+		return err
+	}
+
+	_, err = runSSH(ctx, ip, timeout, "sudo systemctl disable kubelet --now")
+	if err != nil {
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "connection reset") ||
+			strings.Contains(errMsg, "closed network connection") ||
+			strings.Contains(errMsg, "broken pipe") ||
+			strings.Contains(errMsg, "lost connection") ||
+			strings.Contains(errMsg, "closed by remote host") ||
+			strings.Contains(errMsg, "transport is closing") {
+			fmt.Fprintf(os.Stderr,
+				"DisableKubeletSSH(%s): suppressed expected connection-loss "+
+					"error (kubelet likely disabled): %v\n", nodeName, err)
+
+			return nil
+		}
+
+		return err
+	}
+
+	return nil
+}
+
+// EnableKubeletSSH re-enables and starts kubelet on the target node via SSH.
+// Used to recover a node after DisableKubeletSSH, including after a reboot
+// (where kubelet would not auto-start because it was disabled).
+// Retries SSH connection because the node may be mid-reboot when called.
+func EnableKubeletSSH(
+	ctx context.Context, k8sClient client.Client,
+	nodeName string, retryTimeout time.Duration,
+	logf func(string, ...interface{}),
+) error {
+	ip, err := GetNodeInternalIP(ctx, k8sClient, nodeName)
+	if err != nil {
+		return err
+	}
+
+	const (
+		sshAttemptTimeout = 15 * time.Second
+		sshRetryInterval  = 5 * time.Second
+	)
+
+	return wait.PollUntilContextTimeout(ctx, sshRetryInterval, retryTimeout, true,
+		func(ctx context.Context) (bool, error) {
+			if _, sshErr := runSSH(ctx, ip, sshAttemptTimeout, "sudo systemctl enable kubelet"); sshErr != nil {
+				logf("EnableKubeletSSH(%s): enable attempt failed (may be mid-reboot): %v\n",
+					nodeName, sshErr)
+
+				return false, nil
+			}
+
+			if _, sshErr := runSSH(ctx, ip, sshAttemptTimeout, "sudo systemctl daemon-reload"); sshErr != nil {
+				logf("EnableKubeletSSH(%s): daemon-reload failed: %v\n", nodeName, sshErr)
+
+				return false, nil
+			}
+
+			if _, sshErr := runSSH(ctx, ip, sshAttemptTimeout, "sudo systemctl start kubelet"); sshErr != nil {
+				logf("EnableKubeletSSH(%s): start attempt failed: %v\n", nodeName, sshErr)
+
+				return false, nil
+			}
+
+			logf("EnableKubeletSSH(%s): kubelet enabled and started\n", nodeName)
+
+			return true, nil
+		})
+}
+
 // GetNodeBootID retrieves the boot_id from /proc on the target node via
 // oc debug. Requires a running kubelet; use GetNodeBootIDFromAPI when the
 // node is down or recovering.

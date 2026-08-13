@@ -180,6 +180,13 @@ func cleanupSNRCR(name string) {
 		GinkgoWriter.Printf)
 }
 
+func cleanupTestRemediationCR(name string) {
+	helpers.DeleteRemediationCR(
+		context.TODO(), APIClient, testRemediationGVK, name, "",
+		nhcparams.DefaultPollInterval, nhcparams.RemediationCRDeletionTimeout,
+		GinkgoWriter.Printf)
+}
+
 // getNHCPhase returns the current .status.phase of the named NHC CR.
 func getNHCPhase(ctx context.Context, name string) (string, error) {
 	nhc := &unstructured.Unstructured{}
@@ -599,6 +606,76 @@ func buildNHCWithTestRemediation(name string) *unstructured.Unstructured {
 		},
 		map[string]interface{}{
 			"type": "Ready", "status": "Unknown", "duration": "10s",
+		},
+	}
+
+	return nhc
+}
+
+// escalationStep describes one remediator entry for buildNHCWithEscalation.
+type escalationStep struct {
+	templateAPIVersion string
+	templateKind       string
+	templateName       string
+	templateNamespace  string
+	order              int
+	timeout            string
+}
+
+// snrEscalationStep returns an escalation step configured for SNR.
+func snrEscalationStep(order int, timeout string) escalationStep {
+	return escalationStep{
+		templateAPIVersion: nhcparams.SNRCRDGroup + "/" + nhcparams.SNRCRDVersion,
+		templateKind:       "SelfNodeRemediationTemplate",
+		templateName:       nhcparams.SNRTemplateName,
+		templateNamespace:  medik8sparams.OperatorNs,
+		order:              order,
+		timeout:            timeout,
+	}
+}
+
+// testRemediationEscalationStep returns an escalation step configured for TestRemediation.
+func testRemediationEscalationStep(order int, timeout string) escalationStep {
+	return escalationStep{
+		templateAPIVersion: nhcparams.TestRemediationGroup + "/" + nhcparams.TestRemediationVersion,
+		templateKind:       "TestRemediationTemplate",
+		templateName:       nhcparams.TestRemediationTemplateName,
+		templateNamespace:  medik8sparams.OperatorNs,
+		order:              order,
+		timeout:            timeout,
+	}
+}
+
+// buildNHCWithEscalation builds an NHC CR that uses escalatingRemediations
+// instead of a single remediationTemplate.
+func buildNHCWithEscalation(name string, steps []escalationStep) *unstructured.Unstructured {
+	nhc := buildNHCForWorkers(name)
+	spec := nhcSpec(nhc)
+
+	delete(spec, "remediationTemplate")
+
+	escalations := make([]interface{}, len(steps))
+	for i, s := range steps {
+		escalations[i] = map[string]interface{}{
+			"remediationTemplate": map[string]interface{}{
+				"apiVersion": s.templateAPIVersion,
+				"kind":       s.templateKind,
+				"name":       s.templateName,
+				"namespace":  s.templateNamespace,
+			},
+			"order":   int64(s.order),
+			"timeout": s.timeout,
+		}
+	}
+
+	spec["escalatingRemediations"] = escalations
+
+	spec["unhealthyConditions"] = []interface{}{
+		map[string]interface{}{
+			"type": "Ready", "status": "False", "duration": nhcparams.UnhealthyConditionDuration,
+		},
+		map[string]interface{}{
+			"type": "Ready", "status": "Unknown", "duration": nhcparams.UnhealthyConditionDuration,
 		},
 	}
 
