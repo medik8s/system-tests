@@ -382,10 +382,10 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 				nhcSNR := buildNHCForWorkers(nhcparams.NHCTestName)
 				nhcSpec(nhcSNR)["unhealthyConditions"] = []interface{}{
 					map[string]interface{}{
-						"type": "Ready", "status": "False", "duration": "30s",
+						"type": "Ready", "status": "False", "duration": nhcparams.UnhealthyConditionDuration,
 					},
 					map[string]interface{}{
-						"type": "Ready", "status": "Unknown", "duration": "30s",
+						"type": "Ready", "status": "Unknown", "duration": nhcparams.UnhealthyConditionDuration,
 					},
 				}
 

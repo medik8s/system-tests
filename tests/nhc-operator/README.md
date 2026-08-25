@@ -330,3 +330,62 @@ SNR reboots the node for automatic recovery.
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="nhc && disruption:destructive" --focus="non-remediating NHC" ./tests/nhc-operator/...`
 - **Pass criteria**: Second NHC phase is not Remediating, Delete() succeeds (asserted), first NHC returns to Enabled after SNR remediation, node recovers
+
+## Destructive Tests -- Escalation Functional E2E
+
+Tests that verify NHC escalatingRemediations behavior end-to-end:
+escalation when first remediator times out, no escalation when first
+remediator succeeds, and escalation after SNR timeout. Uses SSH to
+disable kubelet persistently (survives reboot) or stop kubelet
+(recoverable after reboot).
+
+### Prerequisites (Escalation E2E)
+
+- NHC and SNR operators installed
+- At least 2 Ready worker nodes
+- SSH access to worker nodes
+- `KUBECONFIG` set with cluster-admin access
+
+### 17. Escalation from TestRemediation to SNR ([OCP-60857](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-60857))
+
+Creates NHC with two-step escalation: TestRemediation (order=0,
+timeout=60s) then SNR (order=1, timeout=180s). Disables kubelet
+persistently via SSH. Verifies TestRemediation CR appears first, SNR CR
+does not exist yet, then after TestRemediation timeout SNR CR appears
+(both coexist). SNR reboots the node, kubelet is re-enabled, NHC
+returns to Enabled and cleans up both CRs.
+
+- **Operators**: NHC v0.12.0+, SNR
+- **Cluster**: Multi-node (2+ workers), SSH access to worker nodes
+- **Environment**: Connected or disconnected
+- **Standalone**: `ginkgo --label-filter="nhc && disruption:destructive" --focus="Escalates from TestRemediation to SNR" ./tests/nhc-operator/...`
+- **Pass criteria**: TestRemediation CR created for target node, SNR CR absent before timeout, SNR CR created after TestRemediation timeout, both CRs coexist, boot ID changes (node rebooted), kubelet re-enabled, NHC returns to Enabled, both CRs cleaned up
+
+### 18. No Escalation When First Remediator Restores Health ([OCP-60858](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-60858))
+
+Creates NHC with SNR first (order=0, timeout=180s) then TestRemediation
+(order=1, timeout=600s). Stops kubelet (recoverable after reboot). SNR
+reboots the node and kubelet auto-restarts. Verifies TestRemediation CR
+was NEVER created (Consistently held for NegativeAssertionHoldDuration).
+NHC returns to Enabled.
+
+- **Operators**: NHC v0.12.0+, SNR
+- **Cluster**: Multi-node (2+ workers), SSH access to worker nodes
+- **Environment**: Connected or disconnected
+- **Standalone**: `ginkgo --label-filter="nhc && disruption:destructive" --focus="Does not escalate" ./tests/nhc-operator/...`
+- **Pass criteria**: SNR reboots node (boot ID changes), node becomes Ready, TestRemediation CR never created (Consistently), NHC returns to Enabled
+
+### 19. Escalation After SNR Timeout ([OCP-66806](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-66806))
+
+Creates NHC with SNR first (order=0, timeout=60s) then TestRemediation
+(order=1, timeout=600s). Disables kubelet persistently via SSH. SNR
+reboots the node but kubelet stays disabled, so the node remains
+unhealthy. After SNR timeout, NHC escalates to TestRemediation. Both
+CRs coexist. Kubelet is re-enabled, NHC returns to Enabled and cleans
+up both CRs.
+
+- **Operators**: NHC v0.12.0+, SNR
+- **Cluster**: Multi-node (2+ workers), SSH access to worker nodes
+- **Environment**: Connected or disconnected
+- **Standalone**: `ginkgo --label-filter="nhc && disruption:destructive" --focus="Escalates after SNR timeout" ./tests/nhc-operator/...`
+- **Pass criteria**: SNR CR created for target node, TestRemediation CR created after SNR timeout, both CRs coexist, kubelet re-enabled, NHC returns to Enabled, both CRs cleaned up
