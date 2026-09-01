@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -26,6 +27,8 @@ import (
 	. "github.com/medik8s/system-tests/tests/internal/medik8sinittools"
 	"github.com/medik8s/system-tests/tests/internal/medik8sparams"
 )
+
+var errFARCSVNotSucceeded = errors.New("FAR CSV not yet Succeeded")
 
 var _ = Describe("FAR Operator Upgrade",
 	Serial, Ordered,
@@ -535,8 +538,8 @@ func upgradeRunRemediationCycle(
 	return farCRName, nil
 }
 
-func verifyFAROperatorReady(
-	csvTimeout, readyTimeout time.Duration, contextMsg string,
+func waitForFARCSVSucceeded(
+	csvTimeout time.Duration, contextMsg string,
 ) *olm.ClusterServiceVersionBuilder {
 	var csv *olm.ClusterServiceVersionBuilder
 
@@ -545,72 +548,105 @@ func verifyFAROperatorReady(
 	lastIPPhase := ""
 
 	Eventually(func() error {
-		sub, subErr := olm.PullSubscription(
-			APIClient, farparams.UpgradeSubName, medik8sparams.OperatorNs)
-		if subErr == nil {
-			state := string(sub.Object.Status.State)
-			if state != lastSubState {
-				GinkgoWriter.Printf("[OLM] Subscription: state=%s currentCSV=%s installedCSV=%s installPlanRef=%s\n",
-					state, sub.Object.Status.CurrentCSV, sub.Object.Status.InstalledCSV,
-					sub.Object.Status.InstallPlanRef.Name)
+		logFARSubscriptionState(&lastSubState)
 
-				for _, cond := range sub.Object.Status.Conditions {
-					GinkgoWriter.Printf("[OLM]   sub-condition: %s=%s reason=%s message=%s\n",
-						cond.Type, cond.Status, cond.Reason, cond.Message)
-				}
+		var err error
 
-				lastSubState = state
-			}
+		csv, err = findSucceededFARCSV(&lastCSVPhase)
+		if err == nil {
+			return nil
 		}
 
-		csvs, csvListErr := olm.ListClusterServiceVersionWithNamePattern(
-			APIClient, medik8sparams.OperatorPackage, medik8sparams.OperatorNs)
-		if csvListErr == nil {
-			for _, c := range csvs {
-				phase, phaseErr := c.GetPhase()
-				if phaseErr != nil {
-					return fmt.Errorf("failed to get phase for CSV %s: %w",
-						c.Object.Name, phaseErr)
-				}
-
-				phaseStr := string(phase)
-				if phaseStr != lastCSVPhase {
-					GinkgoWriter.Printf("[OLM] CSV %s: phase=%s reason=%s message=%s\n",
-						c.Object.Name, phaseStr,
-						c.Object.Status.Reason,
-						c.Object.Status.Message)
-					lastCSVPhase = phaseStr
-				}
-
-				if phase == olmV1alpha1.CSVPhaseSucceeded {
-					csv = c
-
-					return nil
-				}
-			}
+		if !errors.Is(err, errFARCSVNotSucceeded) {
+			return err
 		}
 
-		ips, ipErr := olm.ListInstallPlan(APIClient, medik8sparams.OperatorNs)
-		if ipErr == nil {
-			for _, ip := range ips {
-				ipPhase := string(ip.Object.Status.Phase)
-				if ipPhase != lastIPPhase {
-					GinkgoWriter.Printf("[OLM] InstallPlan %s: phase=%s\n",
-						ip.Object.Name, ipPhase)
-
-					for _, cond := range ip.Object.Status.Conditions {
-						GinkgoWriter.Printf("[OLM]   ip-condition: %s=%s reason=%s message=%s\n",
-							cond.Type, cond.Status, cond.Reason, cond.Message)
-					}
-
-					lastIPPhase = ipPhase
-				}
-			}
-		}
+		logFARInstallPlanStates(&lastIPPhase)
 
 		return fmt.Errorf("CSV not yet Succeeded")
 	}, csvTimeout, farparams.DefaultPollInterval).Should(Succeed(),
 		fmt.Sprintf("FAR CSV not in Succeeded phase %s", contextMsg))
+
+	return csv
+}
+
+func logFARSubscriptionState(lastState *string) {
+	sub, err := olm.PullSubscription(APIClient, farparams.UpgradeSubName, medik8sparams.OperatorNs)
+	if err != nil {
+		return
+	}
+
+	state := string(sub.Object.Status.State)
+	if state == *lastState {
+		return
+	}
+
+	GinkgoWriter.Printf("[OLM] Subscription: state=%s currentCSV=%s installedCSV=%s installPlanRef=%s\n",
+		state, sub.Object.Status.CurrentCSV, sub.Object.Status.InstalledCSV, sub.Object.Status.InstallPlanRef.Name)
+
+	for _, cond := range sub.Object.Status.Conditions {
+		GinkgoWriter.Printf("[OLM]   sub-condition: %s=%s reason=%s message=%s\n",
+			cond.Type, cond.Status, cond.Reason, cond.Message)
+	}
+
+	*lastState = state
+}
+
+func findSucceededFARCSV(lastPhase *string) (*olm.ClusterServiceVersionBuilder, error) {
+	csvs, err := olm.ListClusterServiceVersionWithNamePattern(
+		APIClient, medik8sparams.OperatorPackage, medik8sparams.OperatorNs)
+	if err != nil {
+		return nil, errFARCSVNotSucceeded
+	}
+
+	for _, csvBuilder := range csvs {
+		phase, phaseErr := csvBuilder.GetPhase()
+		if phaseErr != nil {
+			return nil, fmt.Errorf("failed to get phase for CSV %s: %w", csvBuilder.Object.Name, phaseErr)
+		}
+
+		phaseStr := string(phase)
+		if phaseStr != *lastPhase {
+			GinkgoWriter.Printf("[OLM] CSV %s: phase=%s reason=%s message=%s\n",
+				csvBuilder.Object.Name, phaseStr, csvBuilder.Object.Status.Reason, csvBuilder.Object.Status.Message)
+			*lastPhase = phaseStr
+		}
+
+		if phase == olmV1alpha1.CSVPhaseSucceeded {
+			return csvBuilder, nil
+		}
+	}
+
+	return nil, errFARCSVNotSucceeded
+}
+
+func logFARInstallPlanStates(lastPhase *string) {
+	installPlans, err := olm.ListInstallPlan(APIClient, medik8sparams.OperatorNs)
+	if err != nil {
+		return
+	}
+
+	for _, installPlan := range installPlans {
+		phase := string(installPlan.Object.Status.Phase)
+		if phase == *lastPhase {
+			continue
+		}
+
+		GinkgoWriter.Printf("[OLM] InstallPlan %s: phase=%s\n", installPlan.Object.Name, phase)
+
+		for _, cond := range installPlan.Object.Status.Conditions {
+			GinkgoWriter.Printf("[OLM]   ip-condition: %s=%s reason=%s message=%s\n",
+				cond.Type, cond.Status, cond.Reason, cond.Message)
+		}
+
+		*lastPhase = phase
+	}
+}
+
+func verifyFAROperatorReady(
+	csvTimeout, readyTimeout time.Duration, contextMsg string,
+) *olm.ClusterServiceVersionBuilder {
+	csv := waitForFARCSVSucceeded(csvTimeout, contextMsg)
 
 	farDeploy, err := deployment.Pull(
 		APIClient, farparams.OperatorDeploymentName, medik8sparams.OperatorNs)

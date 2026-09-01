@@ -382,11 +382,11 @@ func logNHCControllerState() {
 
 	GinkgoWriter.Printf("=== NHC Controller State (%d pods) ===\n", len(pods))
 
-	for _, p := range pods {
-		phase := p.Object.Status.Phase
+	for _, controllerPod := range pods {
+		phase := controllerPod.Object.Status.Phase
 		ready := "ready"
 
-		for _, cs := range p.Object.Status.ContainerStatuses {
+		for _, cs := range controllerPod.Object.Status.ContainerStatuses {
 			if !cs.Ready {
 				ready = "not-ready"
 
@@ -394,12 +394,12 @@ func logNHCControllerState() {
 			}
 		}
 
-		if len(p.Object.Status.ContainerStatuses) == 0 {
+		if len(controllerPod.Object.Status.ContainerStatuses) == 0 {
 			ready = "no-containers"
 		}
 
 		GinkgoWriter.Printf("  %s: phase=%s containers=%s node=%s\n",
-			p.Object.Name, phase, ready, p.Object.Spec.NodeName)
+			controllerPod.Object.Name, phase, ready, controllerPod.Object.Spec.NodeName)
 	}
 }
 
@@ -414,24 +414,24 @@ func countReadyControllerPods(_ context.Context, labelSelector string) (int, err
 
 	ready := 0
 
-	for _, p := range pods {
+	for _, controllerPod := range pods {
 		// Skip terminating pods (being evicted from stopped-kubelet nodes)
-		if p.Object.DeletionTimestamp != nil {
+		if controllerPod.Object.DeletionTimestamp != nil {
 			continue
 		}
 
-		if p.Object.Status.Phase != corev1.PodRunning {
+		if controllerPod.Object.Status.Phase != corev1.PodRunning {
 			continue
 		}
 
 		// Skip pods with no container statuses yet
-		if len(p.Object.Status.ContainerStatuses) == 0 {
+		if len(controllerPod.Object.Status.ContainerStatuses) == 0 {
 			continue
 		}
 
 		allReady := true
 
-		for _, cs := range p.Object.Status.ContainerStatuses {
+		for _, cs := range controllerPod.Object.Status.ContainerStatuses {
 			if !cs.Ready {
 				allReady = false
 
@@ -633,12 +633,20 @@ func cleanupTestRemediationResources(ctx context.Context) {
 	deleteWithRetry(trtCR, "TestRemediationTemplate CR")
 
 	// Delete RBAC
-	deleteWithRetry(&rbacv1.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{Name: nhcparams.TestRemediationClusterRoleBindingName}}, "ClusterRoleBinding")
-	deleteWithRetry(&rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: nhcparams.TestRemediationClusterRoleName}}, "ClusterRole")
+	deleteWithRetry(&rbacv1.ClusterRoleBinding{
+		ObjectMeta: metav1.ObjectMeta{Name: nhcparams.TestRemediationClusterRoleBindingName},
+	}, "ClusterRoleBinding")
+	deleteWithRetry(&rbacv1.ClusterRole{
+		ObjectMeta: metav1.ObjectMeta{Name: nhcparams.TestRemediationClusterRoleName},
+	}, "ClusterRole")
 
 	// Delete CRDs (this also GCs all CRs)
-	deleteWithRetry(&apiextensionsv1.CustomResourceDefinition{ObjectMeta: metav1.ObjectMeta{Name: nhcparams.TestRemediationCRDName}}, "TestRemediation CRD")
-	deleteWithRetry(&apiextensionsv1.CustomResourceDefinition{ObjectMeta: metav1.ObjectMeta{Name: nhcparams.TestRemediationTemplateCRDName}}, "TestRemediationTemplate CRD")
+	deleteWithRetry(&apiextensionsv1.CustomResourceDefinition{
+		ObjectMeta: metav1.ObjectMeta{Name: nhcparams.TestRemediationCRDName},
+	}, "TestRemediation CRD")
+	deleteWithRetry(&apiextensionsv1.CustomResourceDefinition{
+		ObjectMeta: metav1.ObjectMeta{Name: nhcparams.TestRemediationTemplateCRDName},
+	}, "TestRemediationTemplate CRD")
 }
 
 // buildNHCWithTestRemediation builds an NHC CR that uses the TestRemediation
@@ -1028,18 +1036,17 @@ func nhcUnhealthyConditions(spec map[string]interface{}) []interface{} {
 // verifyNHCNodeCount polls until the given int64 status field matches the expected value.
 // Used for healthyNodes and observedNodes assertions.
 func verifyNHCNodeCount(
-	ctx context.Context, nhcName string,
-	getter func(context.Context, string) (int64, error),
-	expected int64, timeout time.Duration, msg string,
+	ctx context.Context, getter func(context.Context, string) (int64, error),
+	expected int64, msg string,
 ) {
 	GinkgoHelper()
 
 	Eventually(func(g Gomega) {
-		value, err := getter(ctx, nhcName)
+		value, err := getter(ctx, nhcparams.NHCCustomTemplateTestName)
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(value).To(Equal(expected), msg)
 	}).WithPolling(nhcparams.DefaultPollInterval).
-		WithTimeout(timeout).Should(Succeed())
+		WithTimeout(nhcparams.NodeNotReadyTimeout).Should(Succeed())
 }
 
 // verifyNHCDeploymentReady checks that the NHC controller deployment exists and is ready.
@@ -1088,9 +1095,10 @@ func verifyNHCPhaseAndReason(ctx context.Context, nhcName, phase, expectedReason
 
 // verifyNHCDisabledWithReason waits for NHC to reach Disabled phase and then
 // verifies the status.reason contains the expected substring.
-func verifyNHCDisabledWithReason(ctx context.Context, nhcName, expectedReason string, timeout time.Duration) {
+func verifyNHCDisabledWithReason(ctx context.Context, nhcName string) {
 	GinkgoHelper()
-	verifyNHCPhaseAndReason(ctx, nhcName, nhcparams.NHCPhaseDisabled, expectedReason, timeout)
+	verifyNHCPhaseAndReason(ctx, nhcName, nhcparams.NHCPhaseDisabled,
+		nhcparams.NHCReasonTemplateNotFound, nhcparams.NodeNotReadyTimeout)
 }
 
 // waitForNHCGone polls until the named NHC CR is confirmed deleted.

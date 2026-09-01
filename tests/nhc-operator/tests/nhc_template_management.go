@@ -87,8 +87,7 @@ var _ = Describe("NHC Template Management -- Template Watch",
 
 				By("Verifying NHC transitions to Disabled after SNRT deletion")
 
-				verifyNHCDisabledWithReason(ctx, nhcName,
-					nhcparams.NHCReasonTemplateNotFound, nhcparams.NodeNotReadyTimeout)
+				verifyNHCDisabledWithReason(ctx, nhcName)
 
 				By("Re-creating SNRT")
 
@@ -238,11 +237,9 @@ var _ = Describe("NHC Template Management -- Custom Remediation",
 					medik8sparams.DefaultTimeout)).To(Succeed(),
 					"NHC %q should be Enabled", nhcName)
 
-				verifyNHCNodeCount(ctx, nhcName, getNHCHealthyNodes,
-					expectedWorkers, nhcparams.NodeNotReadyTimeout,
+				verifyNHCNodeCount(ctx, getNHCHealthyNodes, expectedWorkers,
 					"healthyNodes should match worker count before remediation")
-				verifyNHCNodeCount(ctx, nhcName, getNHCObservedNodes,
-					expectedWorkers, nhcparams.NodeNotReadyTimeout,
+				verifyNHCNodeCount(ctx, getNHCObservedNodes, expectedWorkers,
 					"observedNodes should match worker count")
 
 				By("Stopping kubelet on target node to trigger remediation")
@@ -256,11 +253,9 @@ var _ = Describe("NHC Template Management -- Custom Remediation",
 					nhcparams.NodeNotReadyTimeout)).To(Succeed(),
 					"NHC %q should enter Remediating after kubelet stop", nhcName)
 
-				verifyNHCNodeCount(ctx, nhcName, getNHCHealthyNodes,
-					expectedWorkers-1, nhcparams.NodeNotReadyTimeout,
+				verifyNHCNodeCount(ctx, getNHCHealthyNodes, expectedWorkers-1,
 					"healthyNodes should be workers-1 during remediation")
-				verifyNHCNodeCount(ctx, nhcName, getNHCObservedNodes,
-					expectedWorkers, nhcparams.NodeNotReadyTimeout,
+				verifyNHCNodeCount(ctx, getNHCObservedNodes, expectedWorkers,
 					"observedNodes should remain unchanged during remediation")
 
 				By("Verifying TestRemediation CR was created for the target node")
@@ -303,11 +298,9 @@ var _ = Describe("NHC Template Management -- Custom Remediation",
 					nhcparams.RemediationCompletionTimeout)).To(Succeed(),
 					"NHC %q should return to Enabled after recovery", nhcName)
 
-				verifyNHCNodeCount(ctx, nhcName, getNHCHealthyNodes,
-					expectedWorkers, nhcparams.NodeNotReadyTimeout,
+				verifyNHCNodeCount(ctx, getNHCHealthyNodes, expectedWorkers,
 					"healthyNodes should be restored after recovery")
-				verifyNHCNodeCount(ctx, nhcName, getNHCObservedNodes,
-					expectedWorkers, nhcparams.NodeNotReadyTimeout,
+				verifyNHCNodeCount(ctx, getNHCObservedNodes, expectedWorkers,
 					"observedNodes should be unchanged after recovery")
 
 				By("Verifying TestRemediation CR was cleaned up")

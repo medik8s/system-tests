@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	commonlabels "github.com/medik8s/common/pkg/labels"
 	configv1 "github.com/openshift/api/config/v1"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -99,8 +98,8 @@ func GetReadyControlPlaneNodes(ctx context.Context, k8sClient client.Client) ([]
 	for i := range nodeList.Items {
 		node := &nodeList.Items[i]
 
-		_, hasCP := node.Labels[commonlabels.ControlPlaneRole]
-		_, hasMaster := node.Labels[commonlabels.MasterRole]
+		_, hasCP := node.Labels["node-role.kubernetes.io/control-plane"]
+		_, hasMaster := node.Labels["node-role.kubernetes.io/master"]
 
 		if (hasCP || hasMaster) && helpers.IsNodeReady(node) {
 			cpNodes = append(cpNodes, *node)
@@ -145,7 +144,7 @@ func CordonExtraWorkers(
 
 	nodeList := &corev1.NodeList{}
 	if err := k8sClient.List(ctx, nodeList,
-		client.MatchingLabels{commonlabels.WorkerRole: ""}); err != nil {
+		client.MatchingLabels{"node-role.kubernetes.io/worker": ""}); err != nil {
 		return nil, fmt.Errorf("failed to list worker nodes: %w", err)
 	}
 
