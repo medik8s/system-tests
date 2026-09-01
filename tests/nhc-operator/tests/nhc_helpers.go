@@ -181,14 +181,18 @@ func isSNRCRDInstalled(ctx context.Context) bool {
 	return false
 }
 
-// stopKubeletForRemediation stops kubelet on the target node via SSH.
-// SSH is used instead of oc debug because:
+// stopKubeletForRemediation stops kubelet on the target node to trigger
+// remediation. SSH is the default because:
 //   - oc debug can timeout for 5+ minutes on Prow AWS (unreliable)
 //   - SSH is deterministic and fast (~1s via ssh-bastion proxy)
 //   - Matches the Python reference implementation (invoke_ssh_on_the_node)
 //
 // On Prow AWS, SSH traffic is proxied through the ssh-bastion service.
 func stopKubeletForRemediation(ctx context.Context, nodeName string) error {
+	if medik8sparams.KubeletStopViaOCDebug {
+		return helpers.StopKubelet(ctx, nodeName, nhcparams.OCDebugKubeletStopTimeout, GinkgoWriter.Printf)
+	}
+
 	return helpers.StopKubeletSSH(ctx, APIClient, nodeName, nhcparams.SSHTimeout)
 }
 

@@ -40,6 +40,11 @@ var (
 	// TargetOCPImage is the OCP release payload for the upgrade target version.
 	TargetOCPImage = envOrDefault("OPENSHIFT_UPGRADE_RELEASE_IMAGE_OVERRIDE",
 		os.Getenv("RELEASE_IMAGE_LATEST"))
+	// SkipOCPUpgrade opts out of the OCP ClusterVersion upgrade step
+	SkipOCPUpgrade = os.Getenv("MEDIK8S_SKIP_OCP_UPGRADE") == "true"
+	// KubeletStopViaOCDebug switches the kubelet-stop remediation trigger from
+	// SSH to "oc debug node/"
+	KubeletStopViaOCDebug = os.Getenv("MEDIK8S_KUBELET_STOP_OCDEBUG") == "true"
 )
 
 func envOrDefault(key, fallback string) string {
