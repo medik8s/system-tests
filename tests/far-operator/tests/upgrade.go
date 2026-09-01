@@ -581,8 +581,13 @@ func logFARSubscriptionState(lastState *string) {
 		return
 	}
 
+	installPlanName := ""
+	if sub.Object.Status.InstallPlanRef != nil {
+		installPlanName = sub.Object.Status.InstallPlanRef.Name
+	}
+
 	GinkgoWriter.Printf("[OLM] Subscription: state=%s currentCSV=%s installedCSV=%s installPlanRef=%s\n",
-		state, sub.Object.Status.CurrentCSV, sub.Object.Status.InstalledCSV, sub.Object.Status.InstallPlanRef.Name)
+		state, sub.Object.Status.CurrentCSV, sub.Object.Status.InstalledCSV, installPlanName)
 
 	for _, cond := range sub.Object.Status.Conditions {
 		GinkgoWriter.Printf("[OLM]   sub-condition: %s=%s reason=%s message=%s\n",

@@ -72,6 +72,9 @@ var _ = Describe("MDR Functional -- NHC-Triggered Remediation",
 				configv1.ExternalPlatformType:
 				Skip(fmt.Sprintf(
 					"MDR remediation requires cloud platform with MachineAPI, got %s", platform))
+			default:
+				Skip(fmt.Sprintf(
+					"MDR remediation requires a recognized cloud platform with MachineAPI, got %s", platform))
 			}
 
 			By("Verifying MDR operator deployment is ready")
