@@ -414,7 +414,7 @@ var _ = Describe("FAR Observability Tests",
 					Expect(activeControllerPodName).ToNot(BeEmpty(),
 						"Could not find active controller pod on leader node %s", activeLeaderNode)
 
-					re := regexp.MustCompile(farparams.TimedOutLogPattern)
+					timedOutPattern := regexp.MustCompile(farparams.TimedOutLogPattern)
 
 					// Resolving the leader pod once is safe here: the timed-out fencing is
 					// non-destructive, so the controller leader stays stable through the retry
@@ -434,7 +434,7 @@ var _ = Describe("FAR Observability Tests",
 							return lastFailureCount
 						}
 
-						lastFailureCount = len(re.FindAllString(logs, -1))
+						lastFailureCount = len(timedOutPattern.FindAllString(logs, -1))
 
 						return lastFailureCount
 					}
