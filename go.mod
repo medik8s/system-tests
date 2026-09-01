@@ -2,6 +2,8 @@ module github.com/medik8s/system-tests
 
 go 1.26.0
 
+toolchain go1.26.5
+
 require (
 	github.com/Masterminds/semver/v3 v3.5.0 // indirect
 	github.com/go-logr/logr v1.4.3
