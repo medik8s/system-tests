@@ -24,6 +24,10 @@ const (
 	TierInterop = "tier:interop"
 	// TierUpgrade marks upgrade tests.
 	TierUpgrade = "tier:upgrade"
+	// TierUpgradeOperator marks operator/catalog-upgrade-only tests.
+	TierUpgradeOperator = "tier:upgrade-operator"
+	// TierUpgradeCluster marks OCP-cluster-upgrade-only tests.
+	TierUpgradeCluster = "tier:upgrade-cluster"
 	// TierResiliency marks resiliency tests.
 	TierResiliency = "tier:resiliency"
 
