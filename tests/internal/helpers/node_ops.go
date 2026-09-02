@@ -172,12 +172,11 @@ var sshKeyOnce sync.Once
 var sshKeyPath string
 var errSSHKey error
 
-// findSSHKey finds the first available SSH private key, copies it to a
+// FindSSHKey finds the first available SSH private key, copies it to a
 // temp file with 0600 permissions, and caches the path for reuse.
 // The copy is needed because ci-operator mounts secrets as 0644
 // (Kubernetes read-only mount) and ssh rejects keys with open permissions.
 // The temp file lives for the process lifetime (no cleanup needed).
-// FindSSHKey is the exported version for callers that need to check availability.
 var FindSSHKey = findSSHKey
 
 func findSSHKey() (string, error) {
@@ -188,12 +187,12 @@ func findSSHKey() (string, error) {
 			os.Getenv("HOME") + "/.ssh/id_rsa",
 		}
 
-		for _, p := range candidates {
-			if p == "/ssh-privatekey" || p == "/.ssh/id_rsa" {
+		for _, candidate := range candidates {
+			if candidate == "/ssh-privatekey" || candidate == "/.ssh/id_rsa" {
 				continue // skip if env var was empty
 			}
 
-			data, err := os.ReadFile(p)
+			data, err := os.ReadFile(candidate)
 			if err != nil {
 				continue
 			}
@@ -230,7 +229,7 @@ func findSSHKey() (string, error) {
 			}
 
 			fmt.Fprintf(os.Stderr, "findSSHKey: using %s (copied from %s)\n",
-				tmpFile.Name(), p)
+				tmpFile.Name(), candidate)
 			sshKeyPath = tmpFile.Name()
 
 			return
@@ -365,7 +364,7 @@ func findSSHBastionUser() string {
 // On Prow AWS, SSH is proxied through an SSH bastion (ProxyCommand).
 func runSSH(
 	ctx context.Context, nodeIP string, timeout time.Duration, cmd string,
-) (string, error) {
+) error {
 	childCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
@@ -379,7 +378,7 @@ func runSSH(
 
 	keyPath, keyErr := findSSHKey()
 	if keyErr != nil {
-		return "", fmt.Errorf("runSSH: %w", keyErr)
+		return fmt.Errorf("runSSH: %w", keyErr)
 	}
 
 	args = append(args, "-i", keyPath)
@@ -401,19 +400,18 @@ func runSSH(
 
 	command := exec.CommandContext(childCtx, "ssh", args...)
 
-	var stdout, stderr bytes.Buffer
+	var stderr bytes.Buffer
 
-	command.Stdout = &stdout
 	command.Stderr = &stderr
 
 	if err := command.Run(); err != nil {
-		return "", fmt.Errorf(
+		return fmt.Errorf(
 			"SSH to %s@%s failed: %w (stderr: %s)",
 			defaultNodeUser, nodeIP, err, stderr.String(),
 		)
 	}
 
-	return strings.TrimSpace(stdout.String()), nil
+	return nil
 }
 
 // StopKubeletSSH stops kubelet on the target node via SSH.
@@ -423,12 +421,12 @@ func StopKubeletSSH(
 	ctx context.Context, k8sClient client.Client,
 	nodeName string, timeout time.Duration,
 ) error {
-	ip, err := GetNodeInternalIP(ctx, k8sClient, nodeName)
+	nodeIP, err := GetNodeInternalIP(ctx, k8sClient, nodeName)
 	if err != nil {
 		return err
 	}
 
-	_, err = runSSH(ctx, ip, timeout, "sudo systemctl stop kubelet")
+	err = runSSH(ctx, nodeIP, timeout, "sudo systemctl stop kubelet")
 	if err != nil {
 		// When kubelet stops, the SSH connection may drop.
 		// This is expected behavior -- kubelet is likely stopped.
@@ -464,18 +462,16 @@ func StartKubeletSSH(
 	ctx context.Context, k8sClient client.Client,
 	nodeName string, timeout time.Duration,
 ) error {
-	ip, err := GetNodeInternalIP(ctx, k8sClient, nodeName)
+	nodeIP, err := GetNodeInternalIP(ctx, k8sClient, nodeName)
 	if err != nil {
 		return err
 	}
 
-	if _, err := runSSH(ctx, ip, timeout, "sudo systemctl daemon-reload"); err != nil {
+	if err := runSSH(ctx, nodeIP, timeout, "sudo systemctl daemon-reload"); err != nil {
 		return err
 	}
 
-	_, err = runSSH(ctx, ip, timeout, "sudo systemctl start kubelet")
-
-	return err
+	return runSSH(ctx, nodeIP, timeout, "sudo systemctl start kubelet")
 }
 
 // GetNodeBootID retrieves the boot_id from /proc on the target node via

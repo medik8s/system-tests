@@ -189,7 +189,10 @@ var _ = Describe("NHC Functional -- Remediation Trigger and CR Lifecycle",
 				editableTarget.SetGroupVersionKind(nhcGVK)
 				editableTarget.SetName(nhcparams.NHCTestName)
 
-				editablePatch := []byte(`{"spec":{"minHealthy":"0%","unhealthyConditions":[{"type":"Ready","status":"False","duration":"60s"},{"type":"Ready","status":"Unknown","duration":"60s"}]}}`)
+				editablePatch := []byte(
+					`{"spec":{"minHealthy":"0%","unhealthyConditions":[` +
+						`{"type":"Ready","status":"False","duration":"60s"},` +
+						`{"type":"Ready","status":"Unknown","duration":"60s"}]}}`)
 				Expect(APIClient.Patch(ctx, editableTarget,
 					client.RawPatch(types.MergePatchType, editablePatch),
 				)).To(Succeed(),
@@ -629,7 +632,9 @@ var _ = Describe("NHC Functional -- Selector and CR Management",
 
 				By("Verifying invalid selector operator value is rejected by webhook")
 
-				invalidOpPatch := []byte(`{"spec":{"selector":{"matchExpressions":[{"key":"node-role.kubernetes.io/worker","operator":"doesNotExist"}]}}}`)
+				invalidOpPatch := []byte(
+					`{"spec":{"selector":{"matchExpressions":[` +
+						`{"key":"node-role.kubernetes.io/worker","operator":"doesNotExist"}]}}}`)
 				invalidTarget := &unstructured.Unstructured{}
 				invalidTarget.SetGroupVersionKind(nhcGVK)
 				invalidTarget.SetName(nhcparams.NHCTestName)

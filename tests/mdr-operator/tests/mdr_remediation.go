@@ -52,7 +52,7 @@ var _ = Describe("MDR Functional -- NHC-Triggered Remediation",
 			// MDR deletes the Machine object, which requires a cloud provider
 			// to provision a replacement VM. Baremetal and None platforms
 			// do not support automatic machine replacement.
-			switch platform {
+			switch platform { //nolint:exhaustive // only cloud platforms with MachineAPI; default skips the rest.
 			case configv1.AWSPlatformType,
 				configv1.AzurePlatformType,
 				configv1.GCPPlatformType,

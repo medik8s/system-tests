@@ -72,7 +72,9 @@ var _ = Describe(
 					DeferCleanup(func() {
 						By("Cleaning up unexpectedly created MDRT in non-existent namespace")
 
-						if delErr := APIClient.Delete(context.Background(), mdrtInvalidNs); delErr != nil && !k8serrors.IsNotFound(delErr) {
+						if delErr := APIClient.Delete(
+							context.Background(), mdrtInvalidNs,
+						); delErr != nil && !k8serrors.IsNotFound(delErr) {
 							GinkgoWriter.Printf("Warning: failed to delete MDRT %s/%s: %v\n",
 								mdrtInvalidNs.GetNamespace(), mdrtInvalidNs.GetName(), delErr)
 						}

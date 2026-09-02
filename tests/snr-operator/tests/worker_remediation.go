@@ -137,9 +137,8 @@ var _ = Describe("SNR Functional - Worker Remediation",
 
 			By("Safety net: verifying SNR DS pods are running")
 
-			Eventually(func() error {
-				return verifyDSPodsRunning()
-			}, snrparams.DSPodRestartTimeout, snrparams.DefaultPollInterval).Should(Succeed(),
+			Eventually(verifyDSPodsRunning,
+				snrparams.DSPodRestartTimeout, snrparams.DefaultPollInterval).Should(Succeed(),
 				"SNR DaemonSet pods did not recover after remediation")
 		})
 
@@ -149,7 +148,7 @@ var _ = Describe("SNR Functional - Worker Remediation",
 			By("Waiting for SNR remediation to complete (node rebooted, SNR CR gone)")
 
 			Expect(waitForRemediationComplete(
-				ctx, APIClient, targetWorkerName, oldBootID, snrparams.SNRDeletionTimeout,
+				ctx, APIClient, targetWorkerName, oldBootID,
 			)).To(Succeed(),
 				"SNR remediation did not complete for node %s within %s",
 				targetWorkerName, snrparams.SNRDeletionTimeout)
@@ -241,7 +240,7 @@ var _ = Describe("SNR Functional - Worker Remediation",
 			})
 
 		Context("strategy-specific remediation with workload pod", func() {
-			runStrategyTest := func(strategyName, snrtConstName, snrtName string) {
+			runStrategyTest := func(strategyName, snrtName string) {
 				By("Pre-cleaning any stale SNRT from previous runs")
 
 				cleanupSNRT(snrtName)
@@ -291,7 +290,7 @@ var _ = Describe("SNR Functional - Worker Remediation",
 				Label(labels.TierAcceptance, labels.DisruptionDestructive,
 					labels.PlatformAny, labels.ComponentRemediation),
 				func() {
-					runStrategyTest("ResourceDeletion", "SNRTResourceDeletionName",
+					runStrategyTest("ResourceDeletion",
 						snrparams.SNRTResourceDeletionName)
 				})
 
@@ -300,7 +299,7 @@ var _ = Describe("SNR Functional - Worker Remediation",
 				Label(labels.TierAcceptance, labels.DisruptionDestructive,
 					labels.PlatformAny, labels.ComponentRemediation),
 				func() {
-					runStrategyTest("OutOfServiceTaint", "SNRTOutOfServiceTaintName",
+					runStrategyTest("OutOfServiceTaint",
 						snrparams.SNRTOutOfServiceTaintName)
 				})
 		})
