@@ -9,17 +9,14 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/deployment"
-	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/pod"
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/reportxml"
 
-	"github.com/medik8s/system-tests/tests/internal/helpers"
 	"github.com/medik8s/system-tests/tests/internal/labels"
 	. "github.com/medik8s/system-tests/tests/internal/medik8sinittools"
 	"github.com/medik8s/system-tests/tests/internal/medik8sparams"
 	"github.com/medik8s/system-tests/tests/mdr-operator/internal/mdrparams"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 var _ = Describe(
@@ -109,24 +106,3 @@ var _ = Describe(
 				}
 			})
 	})
-
-func verifyMDRControllerRunning() error {
-	listOptions := metav1.ListOptions{
-		LabelSelector: mdrparams.OperatorControllerPodLabelSelector,
-	}
-
-	allPods, listErr := pod.List(APIClient, medik8sparams.OperatorNs, listOptions)
-	if listErr != nil {
-		return fmt.Errorf("failed to list MDR pods: %w", listErr)
-	}
-
-	mdrPods := helpers.FilterPodsByDeployment(allPods, mdrparams.OperatorDeploymentName)
-	runningCount := int32(len(helpers.FilterRunningPods(mdrPods)))
-
-	if runningCount != mdrparams.ExpectedReplicas {
-		return fmt.Errorf("expected %d running MDR pod(s), found %d",
-			mdrparams.ExpectedReplicas, runningCount)
-	}
-
-	return nil
-}
