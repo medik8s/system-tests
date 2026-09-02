@@ -14,7 +14,9 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	configv1 "github.com/openshift/api/config/v1"
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/deployment"
+	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/infrastructure"
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/reportxml"
 
 	"github.com/medik8s/system-tests/tests/internal/labels"
@@ -96,11 +98,38 @@ var _ = Describe(
 					GinkgoWriter.Printf("Warning: failed to write collected-paths.txt: %v\n", writeErr)
 				}
 
-				By("Validating node YAMLs for all cluster nodes")
+				By("Detecting cluster topology for node YAML validation")
+
+				infraConfig, infraErr := infrastructure.Pull(APIClient)
+				Expect(infraErr).ToNot(HaveOccurred(), "Failed to pull infrastructure configuration")
+
+				isHypershift := infraConfig.Object.Status.ControlPlaneTopology == configv1.ExternalTopologyMode
+
+				By("Validating node YAMLs for cluster nodes")
+
+				var missingNodes []string
 
 				for _, nodeName := range nodeNames {
-					Expect(hasMatchingFile(collectedFiles, "/nodes/"+nodeName+".yaml")).To(BeTrue(),
-						"must-gather should contain YAML for node %s", nodeName)
+					if !hasMatchingFile(collectedFiles, "/nodes/"+nodeName+".yaml") {
+						missingNodes = append(missingNodes, nodeName)
+						GinkgoWriter.Printf("WARNING: must-gather did not collect YAML for node %s\n", nodeName)
+					}
+				}
+
+				collectedCount := len(nodeNames) - len(missingNodes)
+				GinkgoWriter.Printf("Node YAMLs collected: %d/%d (hypershift=%v)\n",
+					collectedCount, len(nodeNames), isHypershift)
+
+				if isHypershift {
+					// oc adm inspect has no retry logic for node collection. On hypershift
+					// the longer API path through the hosted control plane causes transient
+					// failures — a different node is missed each run.
+					Expect(collectedCount).To(BeNumerically(">=", len(nodeNames)-1),
+						"must-gather should collect YAML for at least %d of %d nodes; missing: %v",
+						len(nodeNames)-1, len(nodeNames), missingNodes)
+				} else {
+					Expect(missingNodes).To(BeEmpty(),
+						"must-gather should contain YAML for all nodes; missing: %v", missingNodes)
 				}
 
 				By("Validating SBR CRD definitions are present")
