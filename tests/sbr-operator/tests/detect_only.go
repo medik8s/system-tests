@@ -200,9 +200,63 @@ var _ = Describe(
 			Expect(createErr).ToNot(HaveOccurred(),
 				"StorageBasedRemediationConfig with detectOnlyMode: Enabled must be admitted by the API server")
 
-			By("Waiting for agent DaemonSet to become ready with detectOnlyMode: Enabled")
+			By("Waiting for agent DaemonSet pods to be Running with detectOnlyMode: Enabled")
 
-			waitForSBRCReady(sbrparams.SBRCDetectOnlyTestName)
+			// The operator's readiness probe gates on /dev/watchdog existing as a char
+			// device. On IPI-AWS clusters the watchdog kernel module is not loaded, so
+			// pods never become Ready even though detectOnlyMode disarms the watchdog.
+			// Check Running phase instead until the operator relaxes the probe (upstream bug).
+			dsName := sbrparams.SBRAgentDaemonSetPrefix + sbrparams.SBRCDetectOnlyTestName
+
+			Eventually(func() error {
+				agentDS, dsErr := APIClient.DaemonSets(medik8sparams.OperatorNs).Get(
+					context.TODO(), dsName, metav1.GetOptions{})
+				if dsErr != nil {
+					return fmt.Errorf("DaemonSet %s not found: %w", dsName, dsErr)
+				}
+
+				if agentDS.Status.DesiredNumberScheduled == 0 {
+					return fmt.Errorf("DaemonSet %s: no pods scheduled yet", dsName)
+				}
+
+				if agentDS.Status.CurrentNumberScheduled < agentDS.Status.DesiredNumberScheduled {
+					return fmt.Errorf("DaemonSet %s: %d/%d pods scheduled",
+						dsName, agentDS.Status.CurrentNumberScheduled, agentDS.Status.DesiredNumberScheduled)
+				}
+
+				listOpts := metav1.ListOptions{}
+				if agentDS.Spec.Selector != nil {
+					if sel, selErr := metav1.LabelSelectorAsSelector(agentDS.Spec.Selector); selErr == nil {
+						listOpts.LabelSelector = sel.String()
+					}
+				}
+
+				podList, podErr := APIClient.CoreV1Interface.Pods(medik8sparams.OperatorNs).List(
+					context.TODO(), listOpts)
+				if podErr != nil {
+					return fmt.Errorf("listing agent pods: %w", podErr)
+				}
+
+				var running int
+				for i := range podList.Items {
+					if podList.Items[i].Status.Phase == corev1.PodRunning {
+						running++
+					}
+				}
+
+				if running < int(agentDS.Status.DesiredNumberScheduled) {
+					return fmt.Errorf("DaemonSet %s: %d/%d pods Running",
+						dsName, running, agentDS.Status.DesiredNumberScheduled)
+				}
+
+				return nil
+			}, sbrparams.SBRCReadyTimeout, sbrparams.DefaultPollInterval).Should(Succeed(),
+				func() string {
+					return fmt.Sprintf(
+						"SBRC %q agent DaemonSet pods must be Running before detectOnlyMode tests begin\n%s",
+						sbrparams.SBRCDetectOnlyTestName,
+						sbrcReadinessDiagnostics(sbrparams.SBRCDetectOnlyTestName, dsName))
+				})
 		})
 
 		AfterAll(func() {
