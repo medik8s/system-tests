@@ -3,6 +3,7 @@ package helpers
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/clients"
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/olm"
@@ -113,6 +114,63 @@ func SwitchSubscriptionCatalog(
 	return sub, nil
 }
 
+func DeleteStaleCSVsAndInstallPlans(
+	apiClient *clients.Settings, namePrefix, namespace string,
+	logf func(string, ...interface{}),
+) {
+	csvs, csvErr := olm.ListClusterServiceVersionWithNamePattern(apiClient, namePrefix, namespace)
+	if csvErr != nil {
+		logf("DeleteStaleCSVsAndInstallPlans: failed to list CSVs matching %q in %s: %v\n",
+			namePrefix, namespace, csvErr)
+	}
+
+	for _, csv := range csvs {
+		if csv.Object.Namespace != namespace {
+			continue
+		}
+		// Capture the name before Delete()
+		csvName := csv.Object.Name
+
+		if delErr := csv.Delete(); delErr != nil {
+			logf("DeleteStaleCSVsAndInstallPlans: failed to delete CSV %s: %v\n",
+				csvName, delErr)
+		} else {
+			logf("DeleteStaleCSVsAndInstallPlans: deleted stale CSV %s\n", csvName)
+		}
+	}
+
+	installPlans, ipErr := olm.ListInstallPlan(apiClient, namespace)
+	if ipErr != nil {
+		// olm.ListInstallPlan errors on "not found", which just means none
+		// exist -- not a real failure worth logging.
+		return
+	}
+
+	for _, installPlan := range installPlans {
+		if installPlan.Object.Namespace != namespace {
+			continue
+		}
+		for _, csvName := range installPlan.Object.Spec.ClusterServiceVersionNames {
+			if !strings.HasPrefix(csvName, namePrefix) {
+				continue
+			}
+
+			// Same builder.Object-nil'd-on-success caveat as above.
+			installPlanName := installPlan.Object.Name
+
+			if delErr := installPlan.Delete(); delErr != nil {
+				logf("DeleteStaleCSVsAndInstallPlans: failed to delete InstallPlan %s: %v\n",
+					installPlanName, delErr)
+			} else {
+				logf("DeleteStaleCSVsAndInstallPlans: deleted stale InstallPlan %s (CSV %s)\n",
+					installPlanName, csvName)
+			}
+
+			break
+		}
+	}
+}
+
 // DeleteSubscription removes an OLM Subscription by name.
 func DeleteSubscription(
 	apiClient *clients.Settings, subName, ns string,
@@ -163,7 +221,7 @@ func GetControllerImage(
 // upgrade test since eco-goinfra does not expose list functions for all OLM types.
 func LogOLMDiagnostics(
 	_ context.Context, apiClient *clients.Settings,
-	ns, catalogName string,
+	ns, subName, catalogName string,
 	logf func(string, ...interface{}),
 ) {
 	logf("=== OLM Diagnostics for namespace %s ===\n", ns)
@@ -176,17 +234,17 @@ func LogOLMDiagnostics(
 			og.Object.Spec.TargetNamespaces)
 	}
 
-	sub, subErr := olm.PullSubscription(apiClient, "far-upgrade-sub", ns)
+	sub, subErr := olm.PullSubscription(apiClient, subName, ns)
 	if subErr != nil {
-		logf("  Subscription far-upgrade-sub: not found (%v)\n", subErr)
+		logf("  Subscription %s: not found (%v)\n", subName, subErr)
 	} else {
 		state := ""
 		if sub.Object.Status.State != "" {
 			state = string(sub.Object.Status.State)
 		}
 
-		logf("  Subscription far-upgrade-sub: state=%s currentCSV=%s installedCSV=%s\n",
-			state, sub.Object.Status.CurrentCSV, sub.Object.Status.InstalledCSV)
+		logf("  Subscription %s: state=%s currentCSV=%s installedCSV=%s\n",
+			subName, state, sub.Object.Status.CurrentCSV, sub.Object.Status.InstalledCSV)
 
 		for _, cond := range sub.Object.Status.Conditions {
 			logf("    condition: %s=%s reason=%s message=%s\n",

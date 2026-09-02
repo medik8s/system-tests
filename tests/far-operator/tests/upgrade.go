@@ -148,7 +148,7 @@ var _ = Describe("FAR Operator Upgrade",
 					sub.Object.Spec.Package)
 
 				helpers.LogOLMDiagnostics(ctx, APIClient, medik8sparams.OperatorNs,
-					medik8sparams.GAOperatorCatalog, GinkgoWriter.Printf)
+					farparams.UpgradeSubName, medik8sparams.GAOperatorCatalog, GinkgoWriter.Printf)
 
 				By("Step 2: Deploy FAR controller and verify it is running")
 
