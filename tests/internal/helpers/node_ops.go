@@ -170,7 +170,7 @@ func GetNodeInternalIP(
 // sshKeyOnce ensures findSSHKey resolves the key once per process.
 var sshKeyOnce sync.Once
 var sshKeyPath string
-var sshKeyErr error
+var errSSHKey error
 
 // findSSHKey finds the first available SSH private key, copies it to a
 // temp file with 0600 permissions, and caches the path for reuse.
@@ -200,7 +200,7 @@ func findSSHKey() (string, error) {
 
 			tmpFile, createErr := os.CreateTemp("", "ssh-key-*")
 			if createErr != nil {
-				sshKeyErr = fmt.Errorf("findSSHKey: create temp file: %w", createErr)
+				errSSHKey = fmt.Errorf("findSSHKey: create temp file: %w", createErr)
 
 				return
 			}
@@ -208,7 +208,7 @@ func findSSHKey() (string, error) {
 			if err := tmpFile.Chmod(0o600); err != nil {
 				os.Remove(tmpFile.Name())
 
-				sshKeyErr = fmt.Errorf("findSSHKey: chmod: %w", err)
+				errSSHKey = fmt.Errorf("findSSHKey: chmod: %w", err)
 
 				return
 			}
@@ -216,7 +216,7 @@ func findSSHKey() (string, error) {
 			if _, err := tmpFile.Write(data); err != nil {
 				os.Remove(tmpFile.Name())
 
-				sshKeyErr = fmt.Errorf("findSSHKey: write: %w", err)
+				errSSHKey = fmt.Errorf("findSSHKey: write: %w", err)
 
 				return
 			}
@@ -224,7 +224,7 @@ func findSSHKey() (string, error) {
 			if err := tmpFile.Close(); err != nil {
 				os.Remove(tmpFile.Name())
 
-				sshKeyErr = fmt.Errorf("findSSHKey: close: %w", err)
+				errSSHKey = fmt.Errorf("findSSHKey: close: %w", err)
 
 				return
 			}
@@ -236,12 +236,12 @@ func findSSHKey() (string, error) {
 			return
 		}
 
-		sshKeyErr = fmt.Errorf(
+		errSSHKey = fmt.Errorf(
 			"no SSH private key found; checked: $CLUSTER_PROFILE_DIR/ssh-privatekey, " +
 				"/home/kni/.ssh/id_rsa, $HOME/.ssh/id_rsa")
 	})
 
-	return sshKeyPath, sshKeyErr
+	return sshKeyPath, errSSHKey
 }
 
 // readSharedDirFile reads a file from the $SHARED_DIR directory and
