@@ -40,6 +40,8 @@ var (
 	// TargetOCPImage is the OCP release payload for the upgrade target version.
 	TargetOCPImage = envOrDefault("OPENSHIFT_UPGRADE_RELEASE_IMAGE_OVERRIDE",
 		os.Getenv("RELEASE_IMAGE_LATEST"))
+	// SkipOCPUpgrade opts out of the OCP ClusterVersion upgrade step
+	SkipOCPUpgrade = os.Getenv("MEDIK8S_SKIP_OCP_UPGRADE") == "true"
 )
 
 func envOrDefault(key, fallback string) string {

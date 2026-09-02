@@ -117,3 +117,31 @@ node joins the cluster.
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="mdr && disruption:destructive" --focus="Processing and Succeeded conditions" ./tests/mdr-operator/...`
 - **Pass criteria**: Processing=True with RemediationStarted reason, Succeeded=Unknown with RemediationStarted reason, replacement node Ready
+
+### 7. Verify MDR Operator Survives Operator/Catalog Upgrade ([OCP-89718](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-89718))
+
+Validates the operator-upgrade half of the customer upgrade path: install GA MDR from redhat-operators, run an NHC-triggered remediation cycle as a baseline, apply the deferred IDMS from `SHARED_DIR`, switch Subscription to the Konflux FBC catalog (pre-GA), and run another remediation cycle to confirm the upgraded operator works. Fully self-contained (does not depend on #11 having run) -- does not touch the OCP cluster version at all. Requires NHC also be installed, since MDR has no standalone remediation trigger -- it is always invoked via an NHC-owned MachineDeletionRemediationTemplate (see #6). Each cycle stops kubelet on a worker, waits for the Machine to be deleted and a replacement node to join Ready.
+
+- **Operators**: MDR GA (from redhat-operators) + MDR pre-GA (from Konflux FBC), NHC (any installed version)
+- **Cluster**: Cloud platform with MachineAPI (AWS, Azure, GCP, vSphere), 2+ worker nodes
+- **Storage**: None
+- **Environment**: Connected
+- **Labels**: `tier:upgrade-operator`, `disruption:destructive`, `platform:any`, `frequency:weekly`, `component:olm`
+- **CI prerequisite**: `medik8s-catalogsource` step must run before the test (creates the `medik8s-catalog` CatalogSource); NHC must be installed
+- **Env vars (optional, have defaults)**: `MEDIK8S_OPERATOR_PACKAGE` (default: `machine-deletion-remediation`), `MEDIK8S_TARGET_CHANNEL` (default: `stable`)
+- **Standalone**: `ginkgo --label-filter="mdr && tier:upgrade-operator" ./tests/mdr-operator/...`
+- **Pass criteria**: MDR deployment Ready, MDR CSV in Succeeded phase after catalog switch (new CSV if Konflux version is higher than GA, same CSV if versions match), controller image changes after operator upgrade (skipped on version parity), NHC-triggered remediation succeeds both before and after the catalog switch (replacement node joins Ready)
+
+### 8. Verify MDR Operator Survives OCP Cluster Upgrade ([OCP-89718](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-89718))
+
+Validates the OCP-upgrade half of the customer upgrade path: install GA MDR from redhat-operators on OCP N-1, run an NHC-triggered remediation cycle as a baseline, upgrade OCP to N, and run another remediation cycle to confirm the operator still works on the upgraded cluster. Fully self-contained (does not depend on #7 having run) -- does not touch the operator Subscription/catalog at all. Requires NHC also be installed (see #6).
+
+- **Operators**: MDR GA (from redhat-operators), NHC (any installed version)
+- **Cluster**: Cloud platform with MachineAPI (AWS, Azure, GCP, vSphere), 2+ worker nodes, OCP N-1 at start (upgraded to N during test)
+- **Storage**: None
+- **Environment**: Connected
+- **Labels**: `tier:upgrade-cluster`, `disruption:destructive`, `platform:any`, `frequency:weekly`, `component:olm`
+- **Env vars (required)**: `OPENSHIFT_UPGRADE_RELEASE_IMAGE_OVERRIDE` (falls back to `RELEASE_IMAGE_LATEST` if unset) -- if `MEDIK8S_SKIP_OCP_UPGRADE=true`, this spec is skipped entirely instead
+- **Env vars (optional, have defaults)**: `MEDIK8S_OPERATOR_PACKAGE` (default: `machine-deletion-remediation`)
+- **Standalone**: `ginkgo --label-filter="mdr && tier:upgrade-cluster" ./tests/mdr-operator/...`
+- **Pass criteria**: MDR deployment Ready on OCP N-1, OCP upgrade completes (Progressing=False, Available=True, Failing=False), MDR deployment Ready after OCP upgrade, NHC-triggered remediation succeeds both before and after the OCP upgrade (replacement node joins Ready)

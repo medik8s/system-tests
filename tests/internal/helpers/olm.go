@@ -130,6 +130,62 @@ func DeleteSubscription(
 	}
 }
 
+// CleanupSubscriptionAndCSV deletes the Subscription plus any CSV and
+// InstallPlan left behind for it, so a subsequent InstallGAOperatorSubscription
+// call starts from a clean slate. CSVs/InstallPlans are filtered by namePattern
+// (the operator's OLM package name) rather than deleted namespace-wide, since
+// other operators (e.g. NHC) share the same namespace and must not be touched.
+func CleanupSubscriptionAndCSV(
+	apiClient *clients.Settings, subName, namePattern, ns string,
+	logf func(string, ...interface{}),
+) {
+	DeleteSubscription(apiClient, subName, ns, logf)
+
+	csvs, csvErr := olm.ListClusterServiceVersionWithNamePattern(apiClient, namePattern, ns)
+	if csvErr != nil {
+		logf("WARNING: failed to list CSVs matching %q for cleanup: %v\n", namePattern, csvErr)
+
+		return
+	}
+
+	csvNames := make(map[string]bool, len(csvs))
+
+	for _, csv := range csvs {
+		csvNames[csv.Object.Name] = true
+
+		if delErr := csv.Delete(); delErr != nil {
+			logf("WARNING: failed to delete leftover CSV %s: %v\n", csv.Object.Name, delErr)
+		}
+	}
+
+	plans, planErr := olm.ListInstallPlan(apiClient, ns)
+	if planErr != nil {
+		logf("WARNING: failed to list InstallPlans for cleanup: %v\n", planErr)
+
+		return
+	}
+
+	for _, plan := range plans {
+		matches := false
+
+		for _, csvName := range plan.Object.Spec.ClusterServiceVersionNames {
+			if csvNames[csvName] {
+				matches = true
+
+				break
+			}
+		}
+
+		if !matches {
+			continue
+		}
+
+		if delErr := plan.Delete(); delErr != nil {
+			logf("WARNING: failed to delete leftover InstallPlan %s: %v\n", plan.Object.Name, delErr)
+		}
+	}
+}
+
 // GetControllerImage returns the manager container image of the first running
 // controller pod matching the given label selector and container name.
 func GetControllerImage(
