@@ -150,7 +150,7 @@ MachineHealthCheck resources.
   digest is logged on every run. Disconnected clusters can set `MUST_GATHER_IMAGE`
   to an accessible mirrored image
 - **Standalone**: `ginkgo --label-filter="sbr" --focus="must-gather" ./tests/sbr-operator/...`
-- **Pass criteria**: SBR deployment is Ready; must-gather completes successfully; output contains node YAMLs for all cluster nodes, all 3 SBR CRD definition files, and MachineHealthCheck data
+- **Pass criteria**: SBR deployment is Ready; must-gather completes successfully; output contains node YAMLs for all cluster nodes (on hypershift, at least N-1 of N nodes due to a known `oc adm inspect` race), all 3 SBR CRD definition files, and MachineHealthCheck data
 
 ### 10. Verify Controller Availability With One Worker (Controller Resilience)
 
