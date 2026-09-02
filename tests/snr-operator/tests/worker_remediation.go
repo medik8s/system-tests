@@ -100,7 +100,6 @@ var _ = Describe("SNR Functional - Worker Remediation",
 		JustAfterEach(func() {
 			// Cleanup order: CRs first (only needs API server), then node
 			// recovery.
-
 			if currentNHCName != "" {
 				By("Safety net: deleting NHC CR " + currentNHCName)
 				cleanupNHCCR(currentNHCName)

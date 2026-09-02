@@ -76,7 +76,6 @@ var _ = Describe("SNR Functional - Master Remediation",
 		JustAfterEach(func() {
 			// Cleanup order: CRs first (only needs API server), then node
 			// recovery.
-
 			for _, nhcName := range currentNHCNames {
 				By("Safety net: deleting NHC CR " + nhcName)
 				cleanupNHCCR(nhcName)
@@ -185,6 +184,7 @@ var _ = Describe("SNR Functional - Master Remediation",
 				By("Cleaning up NHC CR")
 
 				cleanupNHCCR(snrparams.NHCMasterTestName)
+
 				currentNHCNames = nil
 			})
 
