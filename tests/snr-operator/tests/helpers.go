@@ -436,12 +436,12 @@ func buildSNRT(name, strategy string) *unstructured.Unstructured {
 //   - Fast flow: cycle already completed, CR gone, boot ID already changed
 func waitForRemediationComplete(
 	ctx context.Context, k8sClient client.Client,
-	nodeName, previousBootID string, timeout time.Duration,
+	nodeName, previousBootID string,
 ) error {
 	var snrSeen bool
 
 	return wait.PollUntilContextTimeout(
-		ctx, snrparams.DefaultPollInterval, timeout, true,
+		ctx, snrparams.DefaultPollInterval, snrparams.SNRDeletionTimeout, true,
 		func(ctx context.Context) (bool, error) {
 			// Check if SNR CR exists.
 			obj := &unstructured.Unstructured{}
@@ -522,18 +522,18 @@ func createWorkloadPodOnNode(ctx context.Context, nodeName string) *corev1.Pod {
 	})
 
 	Eventually(func() bool {
-		p := &corev1.Pod{}
+		currentPod := &corev1.Pod{}
 		if getErr := APIClient.Get(ctx, client.ObjectKey{
 			Name: workloadPod.Name, Namespace: workloadPod.Namespace,
-		}, p); getErr != nil {
+		}, currentPod); getErr != nil {
 			return false
 		}
 
-		if p.Status.Phase != corev1.PodRunning {
+		if currentPod.Status.Phase != corev1.PodRunning {
 			return false
 		}
 
-		for _, cs := range p.Status.ContainerStatuses {
+		for _, cs := range currentPod.Status.ContainerStatuses {
 			if !cs.Ready {
 				return false
 			}
@@ -552,10 +552,10 @@ func waitForPodEvictedFromNode(
 	ctx context.Context, podName, podNamespace, nodeName string,
 ) {
 	Eventually(func() bool {
-		p := &corev1.Pod{}
+		currentPod := &corev1.Pod{}
 		getErr := APIClient.Get(ctx, client.ObjectKey{
 			Name: podName, Namespace: podNamespace,
-		}, p)
+		}, currentPod)
 
 		if k8serrors.IsNotFound(getErr) {
 			return true
@@ -565,7 +565,7 @@ func waitForPodEvictedFromNode(
 			return false
 		}
 
-		return p.Spec.NodeName != nodeName
+		return currentPod.Spec.NodeName != nodeName
 	}, snrparams.WorkloadEvictionTimeout, snrparams.DefaultPollInterval).Should(BeTrue(),
 		"Workload pod %s was not evicted from node %s", podName, nodeName)
 }

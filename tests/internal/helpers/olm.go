@@ -17,14 +17,14 @@ import (
 // exactly one OperatorGroup per namespace to process Subscriptions.
 func InstallGAOperatorSubscription(
 	apiClient *clients.Settings,
-	subName, ns, catalog, catalogNs, pkg, channel string,
+	subName, namespace, catalog, catalogNs, pkg, channel string,
 ) (*olm.SubscriptionBuilder, error) {
-	if err := EnsureOperatorGroup(apiClient, ns); err != nil {
-		return nil, fmt.Errorf("failed to ensure OperatorGroup in %s: %w", ns, err)
+	if err := EnsureOperatorGroup(apiClient, namespace); err != nil {
+		return nil, fmt.Errorf("failed to ensure OperatorGroup in %s: %w", namespace, err)
 	}
 
 	sub := olm.NewSubscriptionBuilder(
-		apiClient, subName, ns, catalog, catalogNs, pkg,
+		apiClient, subName, namespace, catalog, catalogNs, pkg,
 	)
 
 	sub.WithChannel(channel).
@@ -41,15 +41,15 @@ func InstallGAOperatorSubscription(
 // EnsureOperatorGroup creates an AllNamespaces OperatorGroup in the given
 // namespace if one does not already exist. Uses AllNamespaces mode (empty
 // targetNamespaces) because medik8s operators do not support OwnNamespace.
-func EnsureOperatorGroup(apiClient *clients.Settings, ns string) error {
-	og := olm.NewOperatorGroupBuilder(apiClient, "medik8s-og", ns)
-	if og.Exists() {
+func EnsureOperatorGroup(apiClient *clients.Settings, namespace string) error {
+	operatorGroup := olm.NewOperatorGroupBuilder(apiClient, "medik8s-og", namespace)
+	if operatorGroup.Exists() {
 		return nil
 	}
 
-	og.Definition.Spec.TargetNamespaces = nil
+	operatorGroup.Definition.Spec.TargetNamespaces = nil
 
-	_, err := og.Create()
+	_, err := operatorGroup.Create()
 	if err != nil {
 		return fmt.Errorf("failed to create OperatorGroup: %w", err)
 	}
@@ -163,20 +163,20 @@ func GetControllerImage(
 // upgrade test since eco-goinfra does not expose list functions for all OLM types.
 func LogOLMDiagnostics(
 	_ context.Context, apiClient *clients.Settings,
-	ns, catalogName string,
+	namespace, catalogName string,
 	logf func(string, ...interface{}),
 ) {
-	logf("=== OLM Diagnostics for namespace %s ===\n", ns)
+	logf("=== OLM Diagnostics for namespace %s ===\n", namespace)
 
-	og, ogErr := olm.PullOperatorGroup(apiClient, "medik8s-og", ns)
+	operatorGroup, ogErr := olm.PullOperatorGroup(apiClient, "medik8s-og", namespace)
 	if ogErr != nil {
 		logf("  OperatorGroup medik8s-og: not found (%v)\n", ogErr)
 	} else {
 		logf("  OperatorGroup medik8s-og: exists (targets: %v)\n",
-			og.Object.Spec.TargetNamespaces)
+			operatorGroup.Object.Spec.TargetNamespaces)
 	}
 
-	sub, subErr := olm.PullSubscription(apiClient, "far-upgrade-sub", ns)
+	sub, subErr := olm.PullSubscription(apiClient, "far-upgrade-sub", namespace)
 	if subErr != nil {
 		logf("  Subscription far-upgrade-sub: not found (%v)\n", subErr)
 	} else {
@@ -202,7 +202,7 @@ func LogOLMDiagnostics(
 			catalogName, cs.Object.Status.GRPCConnectionState.LastObservedState)
 	}
 
-	csvs, csvErr := olm.ListClusterServiceVersionWithNamePattern(apiClient, "", ns)
+	csvs, csvErr := olm.ListClusterServiceVersionWithNamePattern(apiClient, "", namespace)
 	if csvErr != nil {
 		logf("  CSVs: error listing: %v\n", csvErr)
 	} else {

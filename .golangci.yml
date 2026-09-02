@@ -51,6 +51,7 @@ linters:
       rules:
         main:
           allow:
+            - github.com/medik8s/common
             - github.com/onsi/ginkgo/v2/types
             - k8s.io/apimachinery
             - k8s.io/api

@@ -42,6 +42,7 @@ jobs:
         run: ginkgo run -vv -r --dry-run ./tests/
         env:
           ECO_DRY_RUN: true
+          WORKLOAD_IMAGE: registry.access.redhat.com/ubi9/ubi-minimal:latest
 
       - name: Run unit tests
         run: make test

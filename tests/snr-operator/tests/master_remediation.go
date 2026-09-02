@@ -76,7 +76,6 @@ var _ = Describe("SNR Functional - Master Remediation",
 		JustAfterEach(func() {
 			// Cleanup order: CRs first (only needs API server), then node
 			// recovery.
-
 			for _, nhcName := range currentNHCNames {
 				By("Safety net: deleting NHC CR " + nhcName)
 				cleanupNHCCR(nhcName)
@@ -109,9 +108,8 @@ var _ = Describe("SNR Functional - Master Remediation",
 
 			By("Safety net: verifying SNR DS pods are running")
 
-			Eventually(func() error {
-				return verifyDSPodsRunning()
-			}, snrparams.DSPodRestartTimeout, snrparams.DefaultPollInterval).Should(Succeed(),
+			Eventually(verifyDSPodsRunning,
+				snrparams.DSPodRestartTimeout, snrparams.DefaultPollInterval).Should(Succeed(),
 				"SNR DaemonSet pods did not recover after remediation")
 		})
 
@@ -154,7 +152,7 @@ var _ = Describe("SNR Functional - Master Remediation",
 				By("Waiting for SNR remediation to complete (master rebooted, SNR CR gone)")
 
 				Expect(waitForRemediationComplete(
-					ctx, APIClient, targetMasterName, oldBootID, snrparams.SNRDeletionTimeout,
+					ctx, APIClient, targetMasterName, oldBootID,
 				)).To(Succeed(),
 					"SNR remediation did not complete for master %s", targetMasterName)
 
@@ -185,6 +183,7 @@ var _ = Describe("SNR Functional - Master Remediation",
 				By("Cleaning up NHC CR")
 
 				cleanupNHCCR(snrparams.NHCMasterTestName)
+
 				currentNHCNames = nil
 			})
 
@@ -278,12 +277,12 @@ var _ = Describe("SNR Functional - Master Remediation",
 				By("Waiting for SNR remediation to complete on both nodes")
 
 				Expect(waitForRemediationComplete(
-					ctx, APIClient, targetMasterName, oldMasterBootID, snrparams.SNRDeletionTimeout,
+					ctx, APIClient, targetMasterName, oldMasterBootID,
 				)).To(Succeed(),
 					"SNR remediation did not complete for master %s", targetMasterName)
 
 				Expect(waitForRemediationComplete(
-					ctx, APIClient, targetWorkerName, oldWorkerBootID, snrparams.SNRDeletionTimeout,
+					ctx, APIClient, targetWorkerName, oldWorkerBootID,
 				)).To(Succeed(),
 					"SNR remediation did not complete for worker %s", targetWorkerName)
 

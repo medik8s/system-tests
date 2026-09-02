@@ -137,8 +137,8 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 					spec["minHealthy"] = "-30%"
 
 					conditions := nhcUnhealthyConditions(spec)
-					cond, ok := conditions[0].(map[string]interface{})
-					Expect(ok).To(BeTrue(), "unhealthyConditions[0] is not a map")
+					cond, isMap := conditions[0].(map[string]interface{})
+					Expect(isMap).To(BeTrue(), "unhealthyConditions[0] is not a map")
 
 					cond["duration"] = "-30s"
 
@@ -228,8 +228,7 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 
 					By("Verifying NHC is Disabled with RemediationTemplateNotFound")
 
-					verifyNHCDisabledWithReason(ctx, nhcName,
-						nhcparams.NHCReasonTemplateNotFound, nhcparams.NodeNotReadyTimeout)
+					verifyNHCDisabledWithReason(ctx, nhcName)
 
 					// Must delete and confirm gone before reusing the same name.
 					By("Deleting NHC with wrong SNR template before next scenario")
@@ -253,8 +252,7 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 
 					By("Verifying NHC is Disabled with RemediationTemplateNotFound for poison-pill template")
 
-					verifyNHCDisabledWithReason(ctx, nhcName,
-						nhcparams.NHCReasonTemplateNotFound, nhcparams.NodeNotReadyTimeout)
+					verifyNHCDisabledWithReason(ctx, nhcName)
 				})
 
 			It("Verifying NHC handles missing template namespace correctly",
@@ -282,8 +280,7 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 
 					By("Verifying NHC is Disabled due to missing namespace")
 
-					verifyNHCDisabledWithReason(ctx, nhcName,
-						nhcparams.NHCReasonTemplateNotFound, nhcparams.NodeNotReadyTimeout)
+					verifyNHCDisabledWithReason(ctx, nhcName)
 
 					By("Adding namespace to remediationTemplate via patch")
 
@@ -314,8 +311,7 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 
 					By("Verifying NHC transitions back to Disabled after namespace removed")
 
-					verifyNHCDisabledWithReason(ctx, nhcName,
-						nhcparams.NHCReasonTemplateNotFound, nhcparams.NodeNotReadyTimeout)
+					verifyNHCDisabledWithReason(ctx, nhcName)
 
 					By("Cleaning up NHC before Part 2")
 
