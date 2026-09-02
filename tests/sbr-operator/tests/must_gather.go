@@ -108,6 +108,7 @@ var _ = Describe(
 				By("Validating node YAMLs for cluster nodes")
 
 				var missingNodes []string
+
 				for _, nodeName := range nodeNames {
 					if !hasMatchingFile(collectedFiles, "/nodes/"+nodeName+".yaml") {
 						missingNodes = append(missingNodes, nodeName)
