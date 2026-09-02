@@ -34,6 +34,7 @@ CLAUDE.local.md
 # Go
 go.work
 go.work.sum
+vendor/
 bin/
 coverage.html
 
