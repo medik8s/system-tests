@@ -35,9 +35,17 @@ func RunMustGather(
 	ctx context.Context, destDir string, timeout time.Duration, logf func(format string, args ...interface{}),
 ) error {
 	image := os.Getenv(farparams.MustGatherImageEnvVar)
+	imageSource := farparams.MustGatherImageEnvVar
+
 	if image == "" {
 		image = farparams.DefaultMustGatherImage
+		imageSource = "default"
 	}
+
+	logf("Must-gather image: %s (source: %s)\n", image, imageSource)
+	logf("Must-gather environment: SHARED_DIR=%q, mirror_registry_url=%q, bastion_public_address=%q\n",
+		os.Getenv("SHARED_DIR"), readSharedDirValue("mirror_registry_url"),
+		readSharedDirValue("bastion_public_address"))
 
 	if digest, digestErr := resolveImageDigest(ctx, image); digestErr != nil {
 		logf("WARNING: could not resolve must-gather image digest for %q: %v\n", image, digestErr)
@@ -63,6 +71,20 @@ func RunMustGather(
 	}
 
 	return nil
+}
+
+func readSharedDirValue(name string) string {
+	sharedDir := os.Getenv("SHARED_DIR")
+	if sharedDir == "" {
+		return ""
+	}
+
+	value, err := os.ReadFile(filepath.Join(sharedDir, name))
+	if err != nil {
+		return ""
+	}
+
+	return strings.TrimSpace(string(value))
 }
 
 // resolveImageDigest returns the manifest digest a mutable image reference
