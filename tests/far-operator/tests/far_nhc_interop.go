@@ -234,6 +234,17 @@ var _ = Describe("NHC+FAR Interop",
 
 			fart := buildFARTUnstructured(fartName, fenceAgent, fartSharedParams, nodeParams)
 			deleteRemediationCR(ctx, APIClient, fartGVK, fartName)
+
+			Eventually(func() bool {
+				probe := &unstructured.Unstructured{}
+				probe.SetGroupVersionKind(fartGVK)
+
+				return k8serrors.IsNotFound(APIClient.Get(ctx, client.ObjectKey{
+					Name: fartName, Namespace: medik8sparams.OperatorNs,
+				}, probe))
+			}, farparams.RemediationCRDeletionTimeout, farparams.DefaultPollInterval).Should(BeTrue(),
+				"stale FART %s was not deleted before re-creation", fartName)
+
 			Expect(APIClient.Create(ctx, fart)).To(Succeed(),
 				"Failed to create FART %s", fartName)
 
