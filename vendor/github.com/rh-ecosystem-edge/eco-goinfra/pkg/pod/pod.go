@@ -41,7 +41,12 @@ const (
 	// defaultResponseHeaderTimeout is the maximum time to wait for server response headers.
 	defaultResponseHeaderTimeout = 30 * time.Second
 	// defaultIdleConnTimeout is the maximum time an idle connection can remain in the pool.
-	defaultIdleConnTimeout = 90 * time.Second
+	defaultIdleConnTimeout           = 90 * time.Second
+	errEmptyNamespace                = "pod 'namespace' cannot be empty"
+	defaultShellBinBash              = "/bin/bash"
+	taintEffectNoSchedule            = "NoSchedule"
+	nodeRoleKubernetesIoControlPlane = "node-role.kubernetes.io/control-plane"
+	volumeNameHugepages              = "hugepages"
 )
 
 // Builder provides a struct for pod object from the cluster and a pod definition.
@@ -88,7 +93,7 @@ func NewBuilder(apiClient *clients.Settings, name, nsname, image string) *Builde
 	if nsname == "" {
 		klog.V(100).Info("The namespace of the pod is empty")
 
-		builder.errorMsg = "pod 'namespace' cannot be empty"
+		builder.errorMsg = errEmptyNamespace
 
 		return builder
 	}
@@ -101,7 +106,7 @@ func NewBuilder(apiClient *clients.Settings, name, nsname, image string) *Builde
 		return builder
 	}
 
-	defaultContainer, err := NewContainerBuilder("test", image, []string{"/bin/bash", "-c", "sleep INF"}).GetContainerCfg()
+	defaultContainer, err := NewContainerBuilder("test", image, []string{defaultShellBinBash, "-c", "sleep INF"}).GetContainerCfg()
 	if err != nil {
 		klog.V(100).Info("Failed to define the default container settings")
 
@@ -144,7 +149,7 @@ func Pull(apiClient *clients.Settings, name, nsname string) (*Builder, error) {
 	if nsname == "" {
 		klog.V(100).Info("The namespace of the pod is empty")
 
-		return nil, fmt.Errorf("pod 'namespace' cannot be empty")
+		return nil, fmt.Errorf(errEmptyNamespace)
 	}
 
 	if !builder.Exists() {
@@ -753,7 +758,7 @@ func (builder *Builder) WithTolerationToMaster() *Builder {
 	builder.Definition.Spec.Tolerations = []corev1.Toleration{
 		{
 			Key:    "node-role.kubernetes.io/master",
-			Effect: "NoSchedule",
+			Effect: taintEffectNoSchedule,
 		},
 	}
 
@@ -776,8 +781,8 @@ func (builder *Builder) WithTolerationToControlPlane() *Builder {
 
 	builder.Definition.Spec.Tolerations = []corev1.Toleration{
 		{
-			Key:    "node-role.kubernetes.io/control-plane",
-			Effect: "NoSchedule",
+			Key:    nodeRoleKubernetesIoControlPlane,
+			Effect: taintEffectNoSchedule,
 		},
 	}
 
@@ -1065,15 +1070,15 @@ func (builder *Builder) WithHugePages() *Builder {
 
 	klog.V(100).Infof("Applying hugePages configuration to all containers in pod: %s", builder.Definition.Name)
 
-	builder.isMutationAllowed("hugepages")
+	builder.isMutationAllowed(volumeNameHugepages)
 
 	if builder.Definition.Spec.Volumes != nil {
 		builder.Definition.Spec.Volumes = append(builder.Definition.Spec.Volumes, corev1.Volume{
-			Name: "hugepages", VolumeSource: corev1.VolumeSource{
+			Name: volumeNameHugepages, VolumeSource: corev1.VolumeSource{
 				EmptyDir: &corev1.EmptyDirVolumeSource{Medium: "HugePages"}}})
 	} else {
 		builder.Definition.Spec.Volumes = []corev1.Volume{
-			{Name: "hugepages", VolumeSource: corev1.VolumeSource{
+			{Name: volumeNameHugepages, VolumeSource: corev1.VolumeSource{
 				EmptyDir: &corev1.EmptyDirVolumeSource{Medium: "HugePages"}},
 			},
 		}
@@ -1083,10 +1088,10 @@ func (builder *Builder) WithHugePages() *Builder {
 		if builder.Definition.Spec.Containers[idx].VolumeMounts != nil {
 			builder.Definition.Spec.Containers[idx].VolumeMounts = append(
 				builder.Definition.Spec.Containers[idx].VolumeMounts,
-				corev1.VolumeMount{Name: "hugepages", MountPath: "/mnt/huge"})
+				corev1.VolumeMount{Name: volumeNameHugepages, MountPath: "/mnt/huge"})
 		} else {
 			builder.Definition.Spec.Containers[idx].VolumeMounts = []corev1.VolumeMount{{
-				Name:      "hugepages",
+				Name:      volumeNameHugepages,
 				MountPath: "/mnt/huge",
 			},
 			}
@@ -1254,6 +1259,96 @@ func (builder *Builder) WithTerminationGracePeriodSeconds(terminationGracePeriod
 	}
 
 	builder.Definition.Spec.TerminationGracePeriodSeconds = &terminationGracePeriodSeconds
+
+	return builder
+}
+
+// WithCommand sets the command for the first container in the pod spec.
+func (builder *Builder) WithCommand(command []string) *Builder {
+	if valid, _ := builder.validate(); !valid {
+		return builder
+	}
+
+	klog.V(100).Infof("Setting command %v on pod %s in namespace %s",
+		command, builder.Definition.Name, builder.Definition.Namespace)
+
+	builder.isMutationAllowed("command")
+
+	if builder.errorMsg != "" {
+		return builder
+	}
+
+	if len(command) == 0 {
+		klog.V(100).Infof("Failed to set command on pod %s: command cannot be empty",
+			builder.Definition.Name)
+
+		builder.errorMsg = "pod command cannot be empty"
+
+		return builder
+	}
+
+	if len(builder.Definition.Spec.Containers) == 0 {
+		klog.V(100).Infof("Failed to set command on pod %s: no containers defined",
+			builder.Definition.Name)
+
+		builder.errorMsg = "pod has no containers to set command on"
+
+		return builder
+	}
+
+	builder.Definition.Spec.Containers[0].Command = command
+
+	return builder
+}
+
+// WithResourceClaim adds a ResourceClaim to the pod that references a ResourceClaimTemplate.
+func (builder *Builder) WithResourceClaim(claimName, claimTemplateName string) *Builder {
+	if valid, _ := builder.validate(); !valid {
+		return builder
+	}
+
+	klog.V(100).Infof("Adding ResourceClaim %s (template: %s) to pod %s in namespace %s",
+		claimName, claimTemplateName, builder.Definition.Name, builder.Definition.Namespace)
+
+	builder.isMutationAllowed("ResourceClaim")
+
+	if builder.errorMsg != "" {
+		return builder
+	}
+
+	if claimName == "" {
+		builder.errorMsg = "ResourceClaim name cannot be empty"
+
+		return builder
+	}
+
+	if claimTemplateName == "" {
+		builder.errorMsg = "ResourceClaimTemplate name cannot be empty"
+
+		return builder
+	}
+
+	for _, existing := range builder.Definition.Spec.ResourceClaims {
+		if existing.Name == claimName {
+			klog.V(100).Infof("ResourceClaim %s already exists on pod %s, skipping",
+				claimName, builder.Definition.Name)
+
+			return builder
+		}
+	}
+
+	builder.Definition.Spec.ResourceClaims = append(
+		builder.Definition.Spec.ResourceClaims,
+		corev1.PodResourceClaim{
+			Name:                      claimName,
+			ResourceClaimTemplateName: &claimTemplateName,
+		})
+
+	if len(builder.Definition.Spec.Containers) > 0 {
+		builder.Definition.Spec.Containers[0].Resources.Claims = append(
+			builder.Definition.Spec.Containers[0].Resources.Claims,
+			corev1.ResourceClaim{Name: claimName})
+	}
 
 	return builder
 }

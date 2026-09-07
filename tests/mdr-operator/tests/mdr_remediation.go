@@ -58,9 +58,23 @@ var _ = Describe("MDR Functional -- NHC-Triggered Remediation",
 				configv1.GCPPlatformType,
 				configv1.VSpherePlatformType:
 				GinkgoWriter.Printf("Platform: %s -- MachineAPI available\n", platform)
-			default:
+			case configv1.BareMetalPlatformType,
+				configv1.LibvirtPlatformType,
+				configv1.OpenStackPlatformType,
+				configv1.NonePlatformType,
+				configv1.OvirtPlatformType,
+				configv1.IBMCloudPlatformType,
+				configv1.KubevirtPlatformType,
+				configv1.EquinixMetalPlatformType,
+				configv1.PowerVSPlatformType,
+				configv1.AlibabaCloudPlatformType,
+				configv1.NutanixPlatformType,
+				configv1.ExternalPlatformType:
 				Skip(fmt.Sprintf(
 					"MDR remediation requires cloud platform with MachineAPI, got %s", platform))
+			default:
+				Skip(fmt.Sprintf(
+					"MDR remediation requires a recognized cloud platform with MachineAPI, got %s", platform))
 			}
 
 			By("Verifying MDR operator deployment is ready")
