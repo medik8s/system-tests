@@ -228,7 +228,7 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 
 					By("Verifying NHC is Disabled with RemediationTemplateNotFound")
 
-					verifyNHCDisabledWithReason(ctx, nhcName)
+					verifyNHCDisabledWithTemplateNotFound(ctx, nhcName)
 
 					// Must delete and confirm gone before reusing the same name.
 					By("Deleting NHC with wrong SNR template before next scenario")
@@ -252,7 +252,7 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 
 					By("Verifying NHC is Disabled with RemediationTemplateNotFound for poison-pill template")
 
-					verifyNHCDisabledWithReason(ctx, nhcName)
+					verifyNHCDisabledWithTemplateNotFound(ctx, nhcName)
 				})
 
 			It("Verifying NHC handles missing template namespace correctly",
@@ -280,7 +280,7 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 
 					By("Verifying NHC is Disabled due to missing namespace")
 
-					verifyNHCDisabledWithReason(ctx, nhcName)
+					verifyNHCDisabledWithTemplateNotFound(ctx, nhcName)
 
 					By("Adding namespace to remediationTemplate via patch")
 
@@ -311,7 +311,7 @@ var _ = Describe("NHC Negative -- Validation and Webhook",
 
 					By("Verifying NHC transitions back to Disabled after namespace removed")
 
-					verifyNHCDisabledWithReason(ctx, nhcName)
+					verifyNHCDisabledWithTemplateNotFound(ctx, nhcName)
 
 					By("Cleaning up NHC before Part 2")
 

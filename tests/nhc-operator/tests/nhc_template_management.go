@@ -87,7 +87,7 @@ var _ = Describe("NHC Template Management -- Template Watch",
 
 				By("Verifying NHC transitions to Disabled after SNRT deletion")
 
-				verifyNHCDisabledWithReason(ctx, nhcName)
+				verifyNHCDisabledWithTemplateNotFound(ctx, nhcName)
 
 				By("Re-creating SNRT")
 
