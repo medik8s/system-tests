@@ -261,7 +261,15 @@ var _ = Describe(
 					hasRunningContainer := false
 
 					for j := range pod.Status.ContainerStatuses {
-						if pod.Status.ContainerStatuses[j].State.Running != nil {
+						containerStatus := &pod.Status.ContainerStatuses[j]
+
+						if containerStatus.State.Running != nil {
+							// Reject containers that have already restarted - indicates instability
+							if containerStatus.RestartCount > 0 {
+								return fmt.Errorf("pod %s container %s is Running but has restarted %d times (unstable)",
+									pod.Name, containerStatus.Name, containerStatus.RestartCount)
+							}
+
 							hasRunningContainer = true
 
 							break
