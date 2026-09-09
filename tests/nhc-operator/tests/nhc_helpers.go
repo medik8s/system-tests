@@ -1102,9 +1102,9 @@ func verifyNHCPhaseAndReason(ctx context.Context, nhcName, phase, expectedReason
 		WithTimeout(timeout).Should(Succeed())
 }
 
-// verifyNHCDisabledWithReason waits for NHC to reach Disabled phase and then
+// verifyNHCDisabledWithTemplateNotFound waits for NHC to reach Disabled phase and then
 // verifies the status.reason contains RemediationTemplateNotFound.
-func verifyNHCDisabledWithReason(ctx context.Context, nhcName string) {
+func verifyNHCDisabledWithTemplateNotFound(ctx context.Context, nhcName string) {
 	GinkgoHelper()
 	verifyNHCPhaseAndReason(ctx, nhcName, nhcparams.NHCPhaseDisabled,
 		nhcparams.NHCReasonTemplateNotFound, nhcparams.NodeNotReadyTimeout)

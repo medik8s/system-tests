@@ -368,12 +368,19 @@ func runSSH(
 	childCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
+	sshVerbose := os.Getenv("ECO_SSH_VERBOSE") != ""
+
 	args := []string{
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
 		"-o", "BatchMode=yes",
-		"-o", "LogLevel=ERROR",
 		"-o", "ConnectTimeout=10",
+	}
+
+	if sshVerbose {
+		args = append(args, "-v")
+	} else {
+		args = append(args, "-o", "LogLevel=ERROR")
 	}
 
 	keyPath, keyErr := findSSHKey()
@@ -387,13 +394,27 @@ func runSSH(
 	// Proxy through an SSH bastion if available (external or in-cluster).
 	// ProxyCommand (not ProxyJump) is used so we can pass -i and
 	// host-key options to the bastion hop explicitly.
-	if bastion := findSSHBastion(); bastion != "" {
+	bastion := findSSHBastion()
+	if bastion != "" {
 		bastionUser := findSSHBastionUser()
+		fmt.Fprintf(os.Stderr,
+			"runSSH: connecting to node %s through bastion %s@%s, timeout=%s\n",
+			nodeIP, bastionUser, bastion, timeout)
+
+		verboseFlag := ""
+		if sshVerbose {
+			verboseFlag = "-v "
+		}
+
 		proxyCmd := fmt.Sprintf(
 			"ProxyCommand=ssh -i %s -o StrictHostKeyChecking=no "+
-				"-o UserKnownHostsFile=/dev/null -W %%h:%%p %s@%s",
-			keyPath, bastionUser, bastion)
+				"-o UserKnownHostsFile=/dev/null %s-W %%h:%%p %s@%s",
+			keyPath, verboseFlag, bastionUser, bastion)
 		args = append(args, "-o", proxyCmd)
+	} else {
+		fmt.Fprintf(os.Stderr,
+			"runSSH: no bastion discovered; attempting direct connection to node %s, timeout=%s\n",
+			nodeIP, timeout)
 	}
 
 	args = append(args, fmt.Sprintf("%s@%s", defaultNodeUser, nodeIP), cmd)
@@ -405,9 +426,14 @@ func runSSH(
 	command.Stderr = &stderr
 
 	if err := command.Run(); err != nil {
+		connectionPath := "direct"
+		if bastion != "" {
+			connectionPath = fmt.Sprintf("through bastion %q", bastion)
+		}
+
 		return fmt.Errorf(
-			"SSH to %s@%s failed: %w (stderr: %s)",
-			defaultNodeUser, nodeIP, err, stderr.String(),
+			"SSH to %s@%s failed (%s): %w (stderr: %s)",
+			defaultNodeUser, nodeIP, connectionPath, err, stderr.String(),
 		)
 	}
 

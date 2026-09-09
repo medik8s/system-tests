@@ -2,6 +2,7 @@ package medik8sparams
 
 import (
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -23,6 +24,12 @@ const (
 var WorkloadImage = func() string {
 	img := os.Getenv("WORKLOAD_IMAGE")
 	if img == "" {
+		dryRun, _ := strconv.ParseBool(os.Getenv("ECO_DRY_RUN"))
+		if dryRun {
+			// Dry-run only enumerates specs and never creates workload pods.
+			return ""
+		}
+
 		panic("WORKLOAD_IMAGE env var is required but not set. " +
 			"In Prow CI this is exported from SHARED_DIR/workload_image by the e2e-test commands block. " +
 			"For local runs: export WORKLOAD_IMAGE=registry.access.redhat.com/ubi9/ubi-minimal:latest")
