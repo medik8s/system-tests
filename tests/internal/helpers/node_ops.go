@@ -368,12 +368,19 @@ func runSSH(
 	childCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
+	sshVerbose := os.Getenv("ECO_SSH_VERBOSE") != ""
+
 	args := []string{
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
 		"-o", "BatchMode=yes",
-		"-v",
 		"-o", "ConnectTimeout=10",
+	}
+
+	if sshVerbose {
+		args = append(args, "-v")
+	} else {
+		args = append(args, "-o", "LogLevel=ERROR")
 	}
 
 	keyPath, keyErr := findSSHKey()
@@ -393,10 +400,16 @@ func runSSH(
 		fmt.Fprintf(os.Stderr,
 			"runSSH: connecting to node %s through bastion %s@%s, timeout=%s\n",
 			nodeIP, bastionUser, bastion, timeout)
+
+		verboseFlag := ""
+		if sshVerbose {
+			verboseFlag = "-v "
+		}
+
 		proxyCmd := fmt.Sprintf(
 			"ProxyCommand=ssh -i %s -o StrictHostKeyChecking=no "+
-				"-o UserKnownHostsFile=/dev/null -v -W %%h:%%p %s@%s",
-			keyPath, bastionUser, bastion)
+				"-o UserKnownHostsFile=/dev/null %s-W %%h:%%p %s@%s",
+			keyPath, verboseFlag, bastionUser, bastion)
 		args = append(args, "-o", proxyCmd)
 	} else {
 		fmt.Fprintf(os.Stderr,
