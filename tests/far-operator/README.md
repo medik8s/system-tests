@@ -115,11 +115,71 @@ Validates that the FAR controller container image ships the minimum expected set
 - **Standalone**: `ginkgo --label-filter="far" --focus="fence agents" ./tests/far-operator/...`
 - **Pass criteria**: All expected fence agent binaries are present in the container
 
+## Non-Destructive Tests -- Negative Validation and Webhook Rejection
+
+Tests that verify FAR webhook rejection of invalid CRs and controller
+behavior with misconfigured resources. No node disruption -- all tests
+are pure API-level.
+
+### Prerequisites (Negative Validation)
+
+- FAR operator installed
+- `KUBECONFIG` set with cluster-admin access
+
+### 10. Verify Node-Not-Found Error for Non-Existent CR Name ([OCP-65954](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-65954))
+
+Creates a FAR CR with a name that does not match any cluster node. Verifies
+the controller logs the node-not-found error message.
+
+- **Operators**: FAR v0.8.0+
+- **Cluster**: Any topology
+- **Environment**: Connected or disconnected
+- **Standalone**: `ginkgo --label-filter="far && disruption:nondestructive" --focus="node-not-found" ./tests/far-operator/...`
+- **Pass criteria**: FAR CR created successfully; controller log contains node-not-found message
+
+### 11. Verify Unsupported Action Rejection ([OCP-66090](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-66090))
+
+Creates a FAR CR with `--action=status` (unsupported). Verifies the webhook rejects the CR at creation time with an error about unsupported action.
+
+- **Operators**: FAR v0.8.0+
+- **Cluster**: Any topology
+- **Environment**: Connected or disconnected
+- **Standalone**: `ginkgo --label-filter="far && disruption:nondestructive" --focus="unsupported action" ./tests/far-operator/...`
+- **Pass criteria**: CR creation rejected with error containing "FAR doesn't support any other action than"
+
+### 12. Verify Restriction of Fence Agents in FAR CR ([OCP-71219](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-71219))
+
+Single test case covering two verifications (per the Polarion test plan), both in one `It` block so results map to one Polarion ID:
+1. FAR CR with a fence agent name that passes the `fence_` prefix check but is not installed -- webhook rejects with "unsupported fence agent".
+2. FAR CR with an agent name missing the `fence_` prefix -- CRD schema validation rejects it.
+
+Both sub-cases run even if one fails (failures are collected and reported together).
+
+- **Operators**: FAR v0.8.0+
+- **Cluster**: Any topology
+- **Environment**: Connected or disconnected
+- **Standalone**: `ginkgo --label-filter="far && disruption:nondestructive" --focus="unsupported or invalid fence agent name" ./tests/far-operator/...`
+- **Pass criteria**: unsupported-agent CR rejected with "unsupported fence agent"; invalid-prefix CR rejected with "spec.agent in body should match"
+
+### 13. Verify Restriction of Fence Agents in FARTemplate ([OCP-71220](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-71220))
+
+Single test case covering the same two verifications for `FenceAgentsRemediationTemplate`, both in one `It` block mapping to one Polarion ID:
+1. FARTemplate with an unsupported (but correctly prefixed) fence agent -- webhook rejects with "unsupported fence agent".
+2. FARTemplate with an agent name missing the `fence_` prefix -- CRD schema validation rejects it.
+
+Both sub-cases run even if one fails (failures are collected and reported together).
+
+- **Operators**: FAR v0.8.0+
+- **Cluster**: Any topology
+- **Environment**: Connected or disconnected
+- **Standalone**: `ginkgo --label-filter="far && disruption:nondestructive" --focus="FARTemplate with unsupported or invalid" ./tests/far-operator/...`
+- **Pass criteria**: unsupported-agent template rejected with "unsupported fence agent"; invalid-prefix template rejected with "spec.template.spec.agent in body should match"
+
 ## Destructive Tests
 
 Tests that trigger node fencing via `fence_aws` and cause node reboots. Require AWS IPI cluster with 3+ worker nodes and AWS fencing credentials.
 
-### 10. Verify Standalone FAR Remediation ([OCP-61229](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-61229))
+### 14. Verify Standalone FAR Remediation ([OCP-61229](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-61229))
 
 Creates a FenceAgentsRemediation CR targeting a worker node. Validates that the fence agent reboots the node and the node object is preserved (not re-created).
 
@@ -130,7 +190,7 @@ Creates a FenceAgentsRemediation CR targeting a worker node. Validates that the 
 - **Standalone**: `ginkgo --label-filter="far && disruption:destructive" --focus="standalone FAR CR" ./tests/far-operator/...`
 - **Pass criteria**: Node boot ID changes, node creation timestamp unchanged, node returns to Ready, FAR lifecycle events emitted on CR (RemediationStarted, FenceAgentSucceeded, RemediationFinished) and NodeRemediationCompleted event emitted on Node
 
-### 11. Verify Remediation on Active Controller Node ([OCP-70638](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-70638))
+### 15. Verify Remediation on Active Controller Node ([OCP-70638](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-70638))
 
 Creates a FAR CR targeting the node hosting the active FAR controller pod. Validates that controller failover occurs and remediation completes despite the leader being fenced.
 
@@ -141,7 +201,7 @@ Creates a FAR CR targeting the node hosting the active FAR controller pod. Valid
 - **Standalone**: `ginkgo --label-filter="far && disruption:destructive" --focus="active FAR controller" ./tests/far-operator/...`
 - **Pass criteria**: Node reboots, node returns to Ready, FAR controller replicas recover, controller lease transfers to a different pod, workload pod evicted, FAR lifecycle events survive leader failover (RemediationStarted, FenceAgentSucceeded, RemediationFinished on CR; NodeRemediationCompleted on Node)
 
-### 12. Verify FAR NoSchedule Taint During Remediation ([OCP-65960](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-65960))
+### 16. Verify FAR NoSchedule Taint During Remediation ([OCP-65960](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-65960))
 
 Creates a FAR CR and verifies that the FAR NoSchedule taint is applied to the target node during the remediation process.
 
@@ -152,7 +212,7 @@ Creates a FAR CR and verifies that the FAR NoSchedule taint is applied to the ta
 - **Standalone**: `ginkgo --label-filter="far && disruption:destructive" --focus="NoSchedule taint" ./tests/far-operator/...`
 - **Pass criteria**: FAR taint `remediation.medik8s.io/fence-agents-remediation:NoSchedule` applied during remediation
 
-### 13. Verify FAR CR Status Conditions After Remediation ([OCP-67015](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-67015))
+### 17. Verify FAR CR Status Conditions After Remediation ([OCP-67015](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-67015))
 
 Creates a FAR CR and after remediation completes, verifies the CR status conditions match the expected terminal state: Processing=False, FenceAgentActionSucceeded=True, Succeeded=True.
 
@@ -163,7 +223,7 @@ Creates a FAR CR and after remediation completes, verifies the CR status conditi
 - **Standalone**: `ginkgo --label-filter="far && disruption:destructive" --focus="status conditions" ./tests/far-operator/...`
 - **Pass criteria**: All three FAR CR conditions present with expected values
 
-### 14. Verify FAR Default Reboot Action ([OCP-66203](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-66203))
+### 18. Verify FAR Default Reboot Action ([OCP-66203](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-66203))
 
 Creates a FAR CR without the `--action` parameter in shared parameters. Validates that FAR defaults to the reboot action and the node is successfully rebooted.
 
@@ -174,7 +234,7 @@ Creates a FAR CR without the `--action` parameter in shared parameters. Validate
 - **Standalone**: `ginkgo --label-filter="far && disruption:destructive" --focus="action is omitted" ./tests/far-operator/...`
 - **Pass criteria**: Node reboots despite no explicit action parameter
 
-### 15. Verify Controller Leadership Handover ([OCP-70636](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-70636))
+### 19. Verify Controller Leadership Handover ([OCP-70636](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-70636))
 
 Deletes the active FAR controller pod and validates that a new pod acquires the controller lease. This test does not fence any nodes; it verifies leader election recovery only.
 
@@ -185,7 +245,7 @@ Deletes the active FAR controller pod and validates that a new pod acquires the 
 - **Standalone**: `ginkgo --label-filter="far" --focus="controller leadership" ./tests/far-operator/...`
 - **Pass criteria**: FAR deployment becomes ready, controller lease is held by a different pod
 
-### 16. Verify FAR Operator Survives OCP and Operator Upgrade ([OCP-89717](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-89717))
+### 20. Verify FAR Operator Survives OCP and Operator Upgrade ([OCP-89717](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-89717))
 
 Validates the full customer upgrade path: install GA FAR from redhat-operators on OCP N-1, upgrade OCP to N, run remediation to confirm GA operator works on upgraded cluster, switch Subscription to Konflux FBC catalog (pre-GA), and run remediation again to confirm upgraded operator works. Each remediation cycle creates a workload pod on the target node, fences the node via fence_aws, and verifies node reboot, recovery, and workload eviction via OutOfServiceTaint.
 

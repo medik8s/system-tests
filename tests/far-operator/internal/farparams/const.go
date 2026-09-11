@@ -87,7 +87,7 @@ const (
 	// DefaultPollInterval to reduce List pressure on the shared rate-limited client.
 	EventVerifyInterval = 10 * time.Second
 
-	// RemediationCRDeletionTimeout is how long to wait for a FAR/FART CR to be fully deleted.
+	// RemediationCRDeletionTimeout is how long to wait for a FAR/FARTemplate CR to be fully deleted.
 	RemediationCRDeletionTimeout = 2 * time.Minute
 
 	// ControllerLeaseName is the FAR leader election lease name (LeaderElectionID in cmd/main.go).
@@ -119,11 +119,11 @@ const (
 	// WorkloadPodReadyTimeout is how long to wait for a test workload pod to reach Running.
 	WorkloadPodReadyTimeout = 2 * time.Minute
 
-	// FARCRRetryCount is the retry count for FAR/FART CR spec (matches upstream default).
+	// FARCRRetryCount is the retry count for FAR/FARTemplate CR spec (matches upstream default).
 	FARCRRetryCount = 10
-	// FARCRRetryInterval is the retry interval for FAR/FART CR spec.
+	// FARCRRetryInterval is the retry interval for FAR/FARTemplate CR spec.
 	FARCRRetryInterval = "20s"
-	// FARCRTimeout is the fence agent command timeout for FAR/FART CR spec.
+	// FARCRTimeout is the fence agent command timeout for FAR/FARTemplate CR spec.
 	FARCRTimeout = "60s"
 	// FARCRRemediationStrategy is the default remediation strategy for FAR CRs.
 	FARCRRemediationStrategy = "OutOfServiceTaint"
@@ -134,6 +134,50 @@ const (
 	// SharedCredentialsSecretName is the Secret created by the test suite to hold
 	// fence agent credentials in the format expected by SharedSecretName.
 	SharedCredentialsSecretName = "far-test-shared-credentials"
+
+	// LogSearchTimeout is the Eventually timeout when polling controller logs for a message.
+	LogSearchTimeout = 2 * time.Minute
+
+	// WebhookReadyTimeout is how long to wait for the FAR admission webhook to become
+	// reachable. deployment readiness does not guarantee the webhook server and its
+	// Service endpoints are serving yet, so the first CR create can fail with
+	// "failed calling webhook ... context deadline exceeded".
+	WebhookReadyTimeout = 2 * time.Minute
+
+	// UnsupportedActionMsg is the webhook error when an unsupported action is configured.
+	UnsupportedActionMsg = "FAR doesn't support any other action than"
+
+	// UnsupportedAgentMsg is the webhook error when a fence agent binary is not in the container.
+	UnsupportedAgentMsg = "unsupported fence agent"
+
+	// InvalidAgentPatternFARMsg is the CRD validation error for FAR CR agent name not matching fence_ prefix.
+	InvalidAgentPatternFARMsg = "spec.agent in body should match"
+
+	// InvalidAgentPatternFARTemplateMsg is the CRD validation error for FARTemplate agent name not matching fence_ prefix.
+	InvalidAgentPatternFARTemplateMsg = "spec.template.spec.agent in body should match"
+
+	// MisconfigTestCRName is the FAR CR name used by the invalid-name misconfiguration test.
+	MisconfigTestCRName = "non-existing-node"
+
+	// MisconfigUnsupportedAgent is a fence agent name that passes prefix validation but is not installed.
+	MisconfigUnsupportedAgent = "fence_incorrect"
+
+	// MisconfigInvalidPrefixAgent is a fence agent name that fails the fence_ prefix validation.
+	MisconfigInvalidPrefixAgent = "incorrect_fence"
+
+	// MisconfigFARTemplateName is the FARTemplate name used by misconfiguration tests.
+	MisconfigFARTemplateName = "fenceagentsremediationtemplate-test"
+
+	// WebhookTestCRName is the FAR CR name used by webhook rejection tests.
+	// Uses a placeholder (not a real node) since webhook validates agent/action, not node.
+	WebhookTestCRName = "far-webhook-test-node"
+
+	// PlaceholderNodeName is a non-node name used in FARTemplate webhook tests;
+	// the template is rejected on agent validation before any node matching.
+	PlaceholderNodeName = "placeholder-node"
+
+	// IPMIPortValue is a dummy IPMI --ipport value used in negative-test node parameters.
+	IPMIPortValue = "6233"
 
 	// MinControlPlaneNodes is the minimum Ready CP nodes needed for safe CP remediation.
 	MinControlPlaneNodes = 3
@@ -190,3 +234,11 @@ const (
 
 // WorkloadTestImage is the container image used for test workload pods.
 var WorkloadTestImage = medik8sparams.WorkloadImage
+
+// NodeNotFoundMsgs contains all known variants of the FAR controller
+// node-not-found log message across versions. The log fetch checks all
+// in a single pass to avoid pod-restart races between separate fetches.
+var NodeNotFoundMsgs = []string{
+	"Could not find CR's target node",
+	"couldn't find node matching remediation",
+}
