@@ -318,7 +318,7 @@ var _ = Describe(
 				By(fmt.Sprintf("Creating privileged injector pod on target node %q", targetNodeName))
 
 				injectorPod, createErr := pod.NewBuilder(
-					APIClient, injectorPodName, medik8sparams.OperatorNs, sbrparams.WatchdogDebugImage).
+					APIClient, injectorPodName, medik8sparams.OperatorNs, sbrparams.InjectorImage).
 					DefineOnNode(targetNodeName).
 					WithHostPid(true).
 					WithPrivilegedFlag().

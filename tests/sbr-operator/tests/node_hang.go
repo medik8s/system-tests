@@ -173,7 +173,7 @@ var _ = Describe(
 			probePodName = strings.TrimRight(probePodName, "-")
 
 			probePod, probeErr := pod.NewBuilder(
-				APIClient, probePodName, medik8sparams.OperatorNs, sbrparams.WatchdogDebugImage).
+				APIClient, probePodName, medik8sparams.OperatorNs, sbrparams.InjectorImage).
 				DefineOnNode(targetNodeName).
 				WithHostPid(true).
 				WithPrivilegedFlag().
@@ -291,7 +291,7 @@ var _ = Describe(
 				}, injectorPodName)
 
 				injectorPod, createErr := pod.NewBuilder(
-					APIClient, injectorPodName, medik8sparams.OperatorNs, sbrparams.WatchdogDebugImage).
+					APIClient, injectorPodName, medik8sparams.OperatorNs, sbrparams.InjectorImage).
 					DefineOnNode(targetNodeName).
 					WithHostPid(true).
 					WithPrivilegedFlag().

@@ -332,7 +332,7 @@ var AgentExpectedMetricNames = []string{
 // When empty, tests auto-discover a CephFS StorageClass (provisioner containing "cephfs").
 var SBRStorageClass = os.Getenv("SBR_STORAGE_CLASS")
 
-// WatchdogDebugImage is the container image for /dev/watchdog* discovery pods.
+// WatchdogDebugImage is the container image for /dev/watchdog* discovery and keepalive pods.
 // Must provide sh and ls. Set SBR_WATCHDOG_DEBUG_IMAGE to override (e.g. in disconnected clusters).
 var WatchdogDebugImage = func() string {
 	if img := os.Getenv("SBR_WATCHDOG_DEBUG_IMAGE"); img != "" {
@@ -340,4 +340,16 @@ var WatchdogDebugImage = func() string {
 	}
 
 	return medik8sparams.WorkloadImage
+}()
+
+// InjectorImage is the container image for privileged iptables-injection pods used in SBR disruptive tests.
+// Must provide nsenter and iptables; ubi-minimal lacks both.
+// Set SBR_INJECTOR_IMAGE to override (required in disconnected clusters — mirror ubi9/ubi and point here).
+// In Prow CI this is written to SHARED_DIR/injector_image by the medik8s-lib step.
+var InjectorImage = func() string {
+	if img := os.Getenv("SBR_INJECTOR_IMAGE"); img != "" {
+		return img
+	}
+
+	return "registry.access.redhat.com/ubi9/ubi:latest"
 }()

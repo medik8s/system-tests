@@ -276,7 +276,7 @@ func verifyTransientStorageSelfHealing(targetNodeName *string, injectorPod **pod
 
 	built, createErr := pod.NewBuilder(
 		APIClient, sbrparams.TransientInjectorPodName, medik8sparams.OperatorNs,
-		sbrparams.WatchdogDebugImage,
+		sbrparams.InjectorImage,
 	).
 		DefineOnNode(*targetNodeName).
 		WithHostPid(true).

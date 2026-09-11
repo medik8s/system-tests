@@ -218,7 +218,7 @@ var _ = Describe(
 				}
 
 				injectorPod, createErr := pod.NewBuilder(
-					APIClient, injectorPodName, medik8sparams.OperatorNs, sbrparams.WatchdogDebugImage).
+					APIClient, injectorPodName, medik8sparams.OperatorNs, sbrparams.InjectorImage).
 					DefineOnNode(targetNodeName).
 					WithHostPid(true).
 					WithHostNetwork().
