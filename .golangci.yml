@@ -1,6 +1,6 @@
 version: "2"
 run:
-  go: "1.26"
+  go: "1.27.1"
 output:
   formats:
     text:
@@ -47,6 +47,8 @@ linters:
   disable:
     - ireturn
   settings:
+    goconst:
+      min-occurrences: 26
     depguard:
       rules:
         main:
