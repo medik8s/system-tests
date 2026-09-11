@@ -69,10 +69,20 @@ if [[ ! -z "${ECO_TEST_FOCUS}" ]]; then
 fi
 cmd+=" $@ $feature_dirs"   # add user args before feature dirs
 
-# Execute ginkgo command
+# Execute ginkgo command. A label typo otherwise exits successfully after
+# selecting zero specs, which is particularly dangerous for dedicated CI jobs.
+ginkgo_log=$(mktemp)
 echo $cmd
-eval $cmd
-GINKGO_EXIT=$?
+set -o pipefail
+eval $cmd 2>&1 | tee "$ginkgo_log"
+GINKGO_EXIT=${PIPESTATUS[0]}
+set +o pipefail
+
+if [[ -n "${ECO_TEST_LABELS}" ]] && grep -Eq 'Ran 0 of [0-9]+ Specs' "$ginkgo_log"; then
+    echo "Label filter selected zero specs: ${ECO_TEST_LABELS}" >&2
+    GINKGO_EXIT=1
+fi
+rm -f "$ginkgo_log"
 
 # Copy reportxml testrun XML to SHARED_DIR for the Polarion reporter post step.
 COPY_EXIT=0

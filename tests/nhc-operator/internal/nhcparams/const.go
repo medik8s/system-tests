@@ -40,6 +40,8 @@ const (
 
 	// SNRTemplateName is the default SNR template name deployed by the operator.
 	SNRTemplateName = "self-node-remediation-automatic-strategy-template"
+	// SNRDaemonSetName is the node-agent DaemonSet that performs self-remediation.
+	SNRDaemonSetName = "self-node-remediation-ds"
 
 	// NHCTestName is the NHC CR name used in remediation trigger tests.
 	// In multi-CR tests, this is the slower/standard-duration NHC.
@@ -65,6 +67,14 @@ const (
 
 	// UnhealthyConditionDuration is the standard NHC detection duration.
 	UnhealthyConditionDuration = "30s"
+
+	// OCDebugKubeletStopTimeout is the maximum time to wait for the "oc debug"
+	// kubelet-stop command used.
+	OCDebugKubeletStopTimeout = 5 * time.Minute
+
+	// LeaderAcquisitionTimeout is the maximum time to wait for the NHC
+	// controller's leader-election Lease to point at a pod that exists.
+	LeaderAcquisitionTimeout = 1 * time.Minute
 
 	// NodeNotReadyTimeout is the maximum time to wait for NHC to detect an
 	// unhealthy node and enter Remediating. Includes SSH timeout (30s)

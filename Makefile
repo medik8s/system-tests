@@ -81,7 +81,11 @@ run-internal-pkg-unit-tests:
 	UNIT_TEST=true go test -v ./tests/internal/...
 
 # Note: To add more unit tests for more packages, add corresponding targets here
-test: run-internal-pkg-unit-tests
+test: run-internal-pkg-unit-tests run-nhc-upgrade-unit-tests
+
+.PHONY: run-nhc-upgrade-unit-tests
+run-nhc-upgrade-unit-tests:
+	UNIT_TEST=true WORKLOAD_IMAGE=unused go test ./tests/nhc-operator/internal/nhcutils
 
 coverage-html: test
 	go tool cover -html cover.out

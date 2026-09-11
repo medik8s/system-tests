@@ -1,0 +1,47 @@
+name: Update operator upgrade wiki
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17,47 * * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: update-operator-upgrade-wiki
+  cancel-in-progress: true
+
+jobs:
+  update:
+    if: github.repository_owner == 'medik8s'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Generate current status
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/generate-upgrade-wiki.py /tmp/RHWA-OpenShift-5-operator-upgrade-status.md
+
+      - name: Update system-tests wiki
+        env:
+          GH_TOKEN: ${{ secrets.REPO_ACCESS_KEY }}
+        run: |
+          set -o errexit -o nounset -o pipefail
+          : "${GH_TOKEN:?REPO_ACCESS_KEY must allow writes to the system-tests wiki}"
+          gh auth setup-git
+          git clone "https://github.com/${GITHUB_REPOSITORY}.wiki.git" /tmp/system-tests-wiki
+          cp /tmp/RHWA-OpenShift-5-operator-upgrade-status.md /tmp/system-tests-wiki/RHWA-OpenShift-5-operator-upgrade-status.md
+          cd /tmp/system-tests-wiki
+          if ! grep -q 'RHWA-OpenShift-5-operator-upgrade-status' Home.md; then
+            sed -i '2i\\\n* [RHWA OpenShift 5 operator upgrade status](https://github.com/medik8s/system-tests/wiki/RHWA-OpenShift-5-operator-upgrade-status)' Home.md
+          fi
+          git add Home.md RHWA-OpenShift-5-operator-upgrade-status.md
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m "Refresh RHWA operator upgrade status"
+          git push origin master
