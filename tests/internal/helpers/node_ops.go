@@ -365,6 +365,28 @@ func findSSHBastionUser() string {
 func runSSH(
 	ctx context.Context, nodeIP string, timeout time.Duration, cmd string,
 ) error {
+	_, err := runSSHWithOutput(ctx, nodeIP, timeout, cmd)
+
+	return err
+}
+
+// RunSSHCommand executes a command on a node via SSH and returns its output.
+// It is intended for diagnostics that must work while kubelet is stopped.
+func RunSSHCommand(
+	ctx context.Context, k8sClient client.Client,
+	nodeName string, timeout time.Duration, cmd string,
+) (string, error) {
+	nodeIP, err := GetNodeInternalIP(ctx, k8sClient, nodeName)
+	if err != nil {
+		return "", err
+	}
+
+	return runSSHWithOutput(ctx, nodeIP, timeout, cmd)
+}
+
+func runSSHWithOutput(
+	ctx context.Context, nodeIP string, timeout time.Duration, cmd string,
+) (string, error) {
 	childCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
@@ -374,11 +396,13 @@ func runSSH(
 		"-o", "BatchMode=yes",
 		"-o", "LogLevel=ERROR",
 		"-o", "ConnectTimeout=10",
+		"-o", "ServerAliveInterval=5",
+		"-o", "ServerAliveCountMax=2",
 	}
 
 	keyPath, keyErr := findSSHKey()
 	if keyErr != nil {
-		return fmt.Errorf("runSSH: %w", keyErr)
+		return "", fmt.Errorf("runSSH: %w", keyErr)
 	}
 
 	args = append(args, "-i", keyPath)
@@ -398,23 +422,48 @@ func runSSH(
 
 	args = append(args, fmt.Sprintf("%s@%s", defaultNodeUser, nodeIP), cmd)
 
-	command := exec.CommandContext(childCtx, "ssh", args...)
+	var stdout, stderr bytes.Buffer
 
-	var stderr bytes.Buffer
+	var err error
 
-	command.Stderr = &stderr
+	for attempt := 0; attempt < 2; attempt++ {
+		stdout.Reset()
+		stderr.Reset()
 
-	if err := command.Run(); err != nil {
-		return fmt.Errorf(
+		command := exec.CommandContext(childCtx, "ssh", args...)
+		command.Stdout = &stdout
+		command.Stderr = &stderr
+
+		err = command.Run()
+		if err == nil || !isRetryableSSHConnectionError(stderr.String()) || childCtx.Err() != nil {
+			break
+		}
+
+		time.Sleep(time.Second)
+	}
+
+	if err != nil {
+		return "", fmt.Errorf(
 			"SSH to %s@%s failed: %w (stderr: %s)",
 			defaultNodeUser, nodeIP, err, stderr.String(),
 		)
 	}
 
-	return nil
+	return strings.TrimSpace(stdout.String()), nil
 }
 
-// StopKubeletSSH stops kubelet on the target node via SSH.
+// isRetryableSSHConnectionError only matches failures before SSH can dispatch
+// the remote command, so retrying cannot repeat a disruptive node operation.
+func isRetryableSSHConnectionError(stderr string) bool {
+	return strings.Contains(stderr, "banner exchange") ||
+		strings.Contains(stderr, "kex_exchange_identification") ||
+		strings.Contains(stderr, "Connection refused") ||
+		strings.Contains(stderr, "Connection timed out") ||
+		strings.Contains(stderr, "No route to host") ||
+		strings.Contains(stderr, "ProxyCommand")
+}
+
+// StopKubeletSSH temporarily masks and stops kubelet on the target node via SSH.
 // Uses SSH instead of oc debug because the debug pod connection
 // drops when kubelet stops, causing unreliable timeout errors.
 func StopKubeletSSH(
@@ -426,7 +475,10 @@ func StopKubeletSSH(
 		return err
 	}
 
-	err = runSSH(ctx, nodeIP, timeout, "sudo systemctl stop kubelet")
+	// Keep the mask runtime-only so a node reboot clears it if test cleanup
+	// cannot run after an abrupt test or pod termination. --now stops the
+	// service as part of the same systemd operation as applying the mask.
+	err = runSSH(ctx, nodeIP, timeout, "sudo systemctl mask --runtime --now kubelet")
 	if err != nil {
 		// When kubelet stops, the SSH connection may drop.
 		// This is expected behavior -- kubelet is likely stopped.
@@ -450,7 +502,7 @@ func StopKubeletSSH(
 	return nil
 }
 
-// StartKubeletSSH starts kubelet on the target node via SSH.
+// StartKubeletSSH unmasks and starts kubelet on the target node via SSH.
 // This is the only reliable way to restart kubelet on a node where
 // it was previously stopped -- oc debug cannot schedule a pod when
 // kubelet is down, but SSH connects directly to sshd which runs
@@ -464,6 +516,10 @@ func StartKubeletSSH(
 ) error {
 	nodeIP, err := GetNodeInternalIP(ctx, k8sClient, nodeName)
 	if err != nil {
+		return err
+	}
+
+	if err := runSSH(ctx, nodeIP, timeout, "sudo systemctl unmask --runtime kubelet"); err != nil {
 		return err
 	}
 
