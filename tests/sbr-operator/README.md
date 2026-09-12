@@ -181,3 +181,86 @@ lifecycle test (OCP-70636).
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="sbr" --focus="controller leadership" ./tests/sbr-operator/...`
 - **Pass criteria**: Lease `holderIdentity` changes to a different Running controller pod; deployment returns to full ready replicas
+
+### 12. Verify operator handles a stale RWX test PVC and reconciles successfully (RHWA-1017)
+
+Covers the `testRWXSupport` reconciliation path used when an SBRC references a StorageClass
+whose provisioner is not recognized by SBR (for example `sbr.io/nfs-provisioner` on the CI
+`nfs-sbr-dynamic` StorageClass). That path creates a transient RWX PVC to probe shared-storage
+support. If a prior run left behind a PVC with the same name 
+(for example after an operator crash mid-reconcile), reconciliation can stall on PVC
+`AlreadyExists` unless the operator removes the stale object first.
+
+The test pre-creates such a stale PVC, then creates an SBRC with `detectOnlyMode: Enabled` and a
+worker `nodeSelector` (matching manual RHWA verification on VMs without accessible watchdog),
+pointing at the unknown-provisioner StorageClass. It observes whether reconciliation proceeds
+past `testRWXSupport`: the stale PVC is handled, the transient RWX test PVC is removed after
+validation, and the operator reports `SharedStorageReady=True` with a bound shared-storage PVC.
+
+- **Operators**: SBR
+- **Cluster**: Any topology where the NFS dynamic provisioner step has deployed StorageClass `nfs-sbr-dynamic`
+- **Storage**: NFS dynamic provisioner (`nfs-sbr-dynamic`); suite skips when that StorageClass is absent
+- **Environment**: Connected (NFS provisioner deployed by CI)
+- **Standalone**: `ginkgo --label-filter="sbr" --focus="stale RWX test PVC" ./tests/sbr-operator/...`
+- **Pass criteria**: Stale PVC no longer references the fake StorageClass; RWX test PVC `<sbrc-name>-rwx-test` is deleted after `testRWXSupport`; SBRC reports `SharedStorageReady=True` and shared-storage PVC is Bound on `nfs-sbr-dynamic`
+
+### 13. Verify Released PVs from testRWXSupport do not accumulate while SBRC is alive (RHWA-1046)
+
+When an SBRC references a StorageClass whose provisioner is not recognized by SBR, reconciliation
+runs `testRWXSupport`: a transient RWX PVC is created, access is validated, and the PVC is removed.
+On StorageClasses with `reclaimPolicy: Retain` (such as CI `nfs-sbr-dynamic`), each probe can
+leave a backing PV in `Released` phase. Repeated `testRWXSupport` runs can increase that count
+over time while the SBRC remains.
+
+Requires a reconciled SBRC `test-sbrc-unknown-prov` in `openshift-workload-availability` pointing
+at `nfs-sbr-dynamic` with `SharedStorageReady=True`. In the ordered suite, test 12 establishes
+this state; the spec skips when that SBRC has not reconciled. The test waits until no PVs for
+`nfs-sbr-dynamic` are in `Released` phase with `Retain` reclaim policy, then observes for 90s
+that the count stays at zero.
+
+- **Operators**: SBR
+- **Cluster**: Any topology
+- **Storage**: NFS dynamic provisioner (`nfs-sbr-dynamic`, `reclaimPolicy: Retain`)
+- **Environment**: Connected (NFS provisioner deployed by CI)
+- **Standalone**: `ginkgo --label-filter="sbr" --focus="Released PVs from testRWXSupport" ./tests/sbr-operator/...`
+- **Pass criteria**: Zero Released+Retain PVs for `nfs-sbr-dynamic` after the initial `testRWXSupport` pass; count does not reach 2 or more for 90s while SBRC is alive (tolerates a brief count of 1 during testRWXSupport PV cleanup)
+
+### 14. Verify testRWXSupport does not recreate the RWX test PVC on every reconcile (RHWA-1047)
+
+When an SBRC references a StorageClass whose provisioner is not recognized by SBR, reconciliation
+runs `testRWXSupport` using a transient RWX PVC named `<sbrc-name>-rwx-test`. After a successful
+probe, that PVC is removed. If `testRWXSupport` runs again on subsequent reconciles, the PVC
+reappears periodically while the SBRC remains.
+
+Requires a reconciled SBRC `test-sbrc-unknown-prov` in `openshift-workload-availability` pointing
+at `nfs-sbr-dynamic`, with agent DaemonSet pods Ready. In the ordered suite, test 12 establishes
+this state; the spec skips when that SBRC has not reconciled. The test records any SBRC status
+condition whose type mentions RWX, then observes for 90s that PVC `test-sbrc-unknown-prov-rwx-test`
+is absent.
+
+- **Operators**: SBR
+- **Cluster**: Any topology
+- **Storage**: NFS dynamic provisioner (`nfs-sbr-dynamic`)
+- **Environment**: Connected (NFS provisioner deployed by CI)
+- **Standalone**: `ginkgo --label-filter="sbr" --focus="does not recreate the RWX test PVC" ./tests/sbr-operator/...`
+- **Pass criteria**: RWX test PVC `test-sbrc-unknown-prov-rwx-test` stays absent for 90s while SBRC `test-sbrc-unknown-prov` is alive
+
+### 15. Verify shared-storage PV is cleaned up after SBRC deletion (RHWA-1046)
+
+When an SBRC with unknown-provisioner shared storage reconciles successfully, the operator
+provisions a long-lived shared-storage PVC (`<sbrc-name>-shared-storage`) backed by a dynamically
+provisioned PV. On SBRC deletion, `handleDeletion` cleans up that PVC and its backing volume.
+With `reclaimPolicy: Retain` on the StorageClass, the PV can remain in `Released` phase unless
+reclaim policy is updated during cleanup.
+
+Requires a reconciled SBRC `test-sbrc-unknown-prov` in `openshift-workload-availability` with
+a bound shared-storage PVC; the spec skips when that SBRC has not reconciled. The test records
+the shared-storage PV name, deletes the SBRC, waits for the CR to be removed, then checks that
+the backing PV is deleted or no longer in `Released` phase with `Retain` reclaim policy.
+
+- **Operators**: SBR
+- **Cluster**: Any topology
+- **Storage**: NFS dynamic provisioner (`nfs-sbr-dynamic`)
+- **Environment**: Connected (NFS provisioner deployed by CI)
+- **Standalone**: `ginkgo --label-filter="sbr" --focus="shared-storage PV is cleaned up" ./tests/sbr-operator/...`
+- **Pass criteria**: SBRC `test-sbrc-unknown-prov` is fully removed after delete; shared-storage PV is deleted or no longer Released+Retain within the PV cleanup timeout

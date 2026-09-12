@@ -268,6 +268,37 @@ const (
 	// Port 8080 is controller-runtime's built-in metrics; port 8082 is the SBR agent's own metrics.
 	AgentMetricsPort = "8082"
 
+	// UnknownProvSCName is the StorageClass provisioned by the CI NFS dynamic provisioner step.
+	// It uses sbr.io/nfs-provisioner which SBR treats as an unknown provisioner,
+	// triggering the testRWXSupport code path. PVs are created dynamically by the provisioner.
+	UnknownProvSCName = "nfs-sbr-dynamic"
+
+	// UnknownProvSBRCName is the SBRC name used in the unknown provisioner tests.
+	UnknownProvSBRCName = "test-sbrc-unknown-prov"
+
+	// UnknownProvStalePVCSC is the storageClassName assigned to the stale PVC so it does not
+	// bind to any real PV. Must not match any existing SC in the cluster.
+	UnknownProvStalePVCSC = "nonexistent-sc-for-stale-test"
+
+	// UnknownProvReconcileTimeout is how long to wait for the SBRC to reconcile after creation.
+	// testRWXSupport includes a 5s sleep, plus PVC binding and DaemonSet rollout.
+	UnknownProvReconcileTimeout = 7 * time.Minute
+
+	// UnknownProvDeletionTimeout is how long to wait for SBRC deletion (finalizer drain + PV patch).
+	UnknownProvDeletionTimeout = 3 * time.Minute
+
+	// UnknownProvPVCleanupTimeout is how long to wait for dynamically-provisioned PVs to be
+	// deleted after the operator patches their reclaimPolicy to Delete.
+	// The NFS provisioner's async delete cycle can take over 60s.
+	UnknownProvPVCleanupTimeout = 3 * time.Minute
+
+	// UnknownProvChurnCheckDuration is how long to Consistently observe the cluster while the
+	// SBRC is alive. RHWA-1047 reports testRWXSupport churn about every 36s; 90s covers multiple
+	// reconcile cycles without a fixed sleep.
+	UnknownProvChurnCheckDuration = 90 * time.Second
+
+	// UnknownProvChurnCheckInterval is the poll interval for RHWA-1046/1047 Consistently checks.
+	UnknownProvChurnCheckInterval = 10 * time.Second
 	// MustGatherOCTimeout is the --timeout flag passed to oc adm must-gather so it cleans up gracefully.
 	MustGatherOCTimeout = 14 * time.Minute
 
