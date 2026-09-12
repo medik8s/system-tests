@@ -61,6 +61,29 @@ const (
 	// LeaseTimeout is the maximum wait for a maintenance lease to appear or be deleted.
 	LeaseTimeout = 1 * time.Minute
 
+	// EtcdNamespace is the namespace holding the etcd quorum PodDisruptionBudget.
+	// The NMO webhook lists the single PDB here to assess control-plane quorum.
+	EtcdNamespace = "openshift-etcd"
+	// MinControlPlaneNodesForQuorum is the minimum number of control-plane nodes
+	// required to exercise the etcd-quorum guard (a real quorum needs 3 masters).
+	MinControlPlaneNodesForQuorum = 3
+	// ExpectedQuorumDisruptions is the etcd PDB DisruptionsAllowed value the master
+	// quorum test requires before starting: exactly one, i.e. a 3-member etcd control
+	// plane that tolerates a single disruption. Larger etcd (5 members) tolerates more,
+	// so a single maintenance would not exhaust quorum and the test does not apply.
+	ExpectedQuorumDisruptions = int32(1)
+	// MasterMaintenanceTimeout is the maximum wait for a control-plane NodeMaintenance
+	// to reach Succeeded. Control-plane drains are slower than worker drains.
+	MasterMaintenanceTimeout = 10 * time.Minute
+	// QuorumUpdateTimeout is the maximum wait for the etcd PDB to reflect that a
+	// control-plane node under maintenance has consumed the allowed disruption.
+	QuorumUpdateTimeout = 3 * time.Minute
+	// WebhookMsgQuorumViolation is the substring emitted by the NMO admission
+	// webhook when a second control-plane NodeMaintenance would violate etcd quorum.
+	// Verified against node-maintenance-operator errorControlPlaneQuorumViolation,
+	// identical from tag v0.18.0 through the pinned v0.21.0 (see go.mod).
+	WebhookMsgQuorumViolation = "will violate etcd quorum"
+
 	// MinWorkerNodesForMaintenance is the minimum number of schedulable worker nodes
 	// required by the destructive collision tests: one node is put under real
 	// maintenance while at least one other remains available (for cluster health and,
