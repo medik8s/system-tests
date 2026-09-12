@@ -140,3 +140,31 @@ NMO validating webhook rejects it.
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="operator:nmo" --focus="already under maintenance" ./tests/nmo-operator/...`
 - **Pass criteria**: First NodeMaintenance CR is created and reaches Succeeded phase; the second create for the same node fails with a webhook error whose message contains `NodeMaintenance for node <node> already exists`; cleanup then attempts (best-effort, logged if incomplete) to delete both CR names and wait for the target node to return to Ready and uncordoned
+
+### 11. Verify NMO Operator Survives Operator/Catalog Upgrade ([OCP-89719](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-89719))
+
+Validates the operator-upgrade half of the customer upgrade path: install GA NMO from redhat-operators, run a maintenance cycle as a baseline, apply the deferred IDMS from `SHARED_DIR`, switch Subscription to the Konflux FBC catalog (pre-GA), and run another maintenance cycle to confirm the upgraded operator works. Fully self-contained (does not depend on #12 having run) -- does not touch the OCP cluster version at all. NMO does not remediate -- the maintenance cycle (create a NodeMaintenance CR, verify cordon/taint/drain, delete it, wait for recovery) is the upgrade-test analog to FAR/SNR/MDR's remediation cycle, reusing the existing collision-test helpers (see #9, #10).
+
+- **Operators**: NMO GA (from redhat-operators) + NMO pre-GA (from Konflux FBC)
+- **Cluster**: MNO with at least 1 schedulable worker node
+- **Storage**: None
+- **Environment**: Connected
+- **Labels**: `tier:upgrade-operator`, `disruption:destructive`, `platform:any`, `frequency:weekly`, `component:olm`
+- **CI prerequisite**: `medik8s-catalogsource` step must run before the test (creates the `medik8s-catalog` CatalogSource)
+- **Env vars (optional, have defaults)**: `MEDIK8S_OPERATOR_PACKAGE` (default: `node-maintenance-operator`), `MEDIK8S_TARGET_CHANNEL` (default: `stable`)
+- **Standalone**: `ginkgo --label-filter="operator:nmo && tier:upgrade-operator" ./tests/nmo-operator/...`
+- **Pass criteria**: NMO deployment Ready, NMO CSV in Succeeded phase after catalog switch (new CSV if Konflux version is higher than GA, same CSV if versions match), controller image changes after operator upgrade (skipped on version parity), maintenance cycle succeeds both before and after the catalog switch
+
+### 12. Verify NMO Operator Survives OCP Cluster Upgrade ([OCP-89719](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-89719))
+
+Validates the OCP-upgrade half of the customer upgrade path: install GA NMO from redhat-operators on OCP N-1, run a maintenance cycle as a baseline, upgrade OCP to N, and run another maintenance cycle to confirm the operator still works on the upgraded cluster. Fully self-contained (does not depend on #11 having run) -- does not touch the operator Subscription/catalog at all.
+
+- **Operators**: NMO GA (from redhat-operators)
+- **Cluster**: MNO with at least 1 schedulable worker node, OCP N-1 at start (upgraded to N during test)
+- **Storage**: None
+- **Environment**: Connected
+- **Labels**: `tier:upgrade-cluster`, `disruption:destructive`, `platform:any`, `frequency:weekly`, `component:olm`
+- **Env vars (required)**: `OPENSHIFT_UPGRADE_RELEASE_IMAGE_OVERRIDE` (falls back to `RELEASE_IMAGE_LATEST` if unset) -- if `MEDIK8S_SKIP_OCP_UPGRADE=true`, this spec is skipped entirely instead
+- **Env vars (optional, have defaults)**: `MEDIK8S_OPERATOR_PACKAGE` (default: `node-maintenance-operator`)
+- **Standalone**: `ginkgo --label-filter="operator:nmo && tier:upgrade-cluster" ./tests/nmo-operator/...`
+- **Pass criteria**: NMO deployment Ready on OCP N-1, OCP upgrade completes (Progressing=False, Available=True, Failing=False), NMO deployment Ready after OCP upgrade, maintenance cycle succeeds both before and after the OCP upgrade
