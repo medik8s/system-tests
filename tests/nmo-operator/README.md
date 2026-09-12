@@ -1,7 +1,8 @@
-# NMO Operator Post-Deployment Tests
+# NMO Operator Tests
 
-Automated tests validating the Node Maintenance Operator (NMO)
-deployment, OLM metadata, and security posture.
+Automated tests validating the Node Maintenance Operator (NMO):
+deployment, OLM metadata, security posture, maintenance lifecycle,
+and negative/validation behavior.
 
 ## Prerequisites
 
@@ -140,3 +141,26 @@ NMO validating webhook rejects it.
 - **Environment**: Connected or disconnected
 - **Standalone**: `ginkgo --label-filter="operator:nmo" --focus="already under maintenance" ./tests/nmo-operator/...`
 - **Pass criteria**: First NodeMaintenance CR is created and reaches Succeeded phase; the second create for the same node fails with a webhook error whose message contains `NodeMaintenance for node <node> already exists`; cleanup then attempts (best-effort, logged if incomplete) to delete both CR names and wait for the target node to return to Ready and uncordoned
+
+### 11. Reject NodeMaintenance Referencing a Non-Existent Node ([OCP-29598](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-29598))
+
+Attempts to create a NodeMaintenance CR whose `spec.nodeName` points at a node that
+does not exist, and verifies the NMO validating webhook rejects it and no CR is created.
+
+- **Operators**: NMO v0.17.0+
+- **Cluster**: Any topology
+- **Environment**: Connected or disconnected
+- **Standalone**: `ginkgo --label-filter="operator:nmo" --focus="Reject NodeMaintenance referencing a non-existent node" ./tests/nmo-operator/...`
+- **Pass criteria**: The target node name does not exist on the cluster (precondition); creating the NodeMaintenance CR fails with an error containing `invalid nodeName, no node with name invalid-node found`; the NodeMaintenance CR is absent from the API after the rejected create
+
+### 12. Reject NodeMaintenance With Malformed Field Data ([OCP-52834](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-52834))
+
+Attempts to create NodeMaintenance CRs with malformed field data and verifies the API
+server rejects each. Uses an unstructured CR so an integer can be sent in the
+string-typed `spec.reason` field.
+
+- **Operators**: NMO v0.17.0+
+- **Cluster**: Any topology
+- **Environment**: Connected or disconnected
+- **Standalone**: `ginkgo --label-filter="operator:nmo" --focus="Reject NodeMaintenance with malformed field data" ./tests/nmo-operator/...`
+- **Pass criteria**: Creating a NodeMaintenance CR with an integer `spec.reason` fails with an error containing `must be of type string: "integer"` and the CR is not created; creating a NodeMaintenance CR with a malformed `metadata.name` fails with an error containing `must start and end with an alphanumeric character`
