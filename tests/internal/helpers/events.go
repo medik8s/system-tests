@@ -59,7 +59,14 @@ func WaitForEvents(
 
 	err := wait.PollUntilContextCancel(pollCtx, interval, true,
 		func(ctx context.Context) (bool, error) {
-			events, listErr := ListEventsForObject(ctx, clientset, involved)
+			// Bound each List with its own short sub-context so a throttled
+			// call fails fast and this poll loop retries, rather than a single
+			// rate-limited request consuming the whole timeout budget.
+			listCtx, listCancel := context.WithTimeout(ctx, 2*interval)
+			events, listErr := ListEventsForObject(listCtx, clientset, involved)
+
+			listCancel()
+
 			if listErr != nil {
 				lastListErr = listErr
 

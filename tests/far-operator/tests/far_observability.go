@@ -251,7 +251,7 @@ var _ = Describe("FAR Observability Tests",
 
 					By("Verifying RemediationStarted event on the FAR CR")
 
-					Expect(helpers.WaitForEvents(ctx, APIClient.K8sClient,
+					Expect(helpers.WaitForEvents(ctx, EventsClient,
 						helpers.InvolvedObjectRef{
 							Kind:      "FenceAgentsRemediation",
 							Name:      farCRName,

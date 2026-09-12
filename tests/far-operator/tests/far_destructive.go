@@ -395,7 +395,7 @@ var _ = Describe("FAR Destructive Tests",
 
 						By("Verifying FAR lifecycle events on CR")
 
-						Expect(helpers.WaitForEvents(ctx, APIClient.K8sClient,
+						Expect(helpers.WaitForEvents(ctx, EventsClient,
 							helpers.InvolvedObjectRef{
 								Kind:      "FenceAgentsRemediation",
 								Name:      targetNode.Name,
@@ -412,7 +412,7 @@ var _ = Describe("FAR Destructive Tests",
 
 						By("Verifying remediation completion event on Node")
 
-						Expect(helpers.WaitForEvents(ctx, APIClient.K8sClient,
+						Expect(helpers.WaitForEvents(ctx, EventsClient,
 							helpers.InvolvedObjectRef{
 								Kind: "Node",
 								Name: targetNode.Name,
@@ -626,7 +626,7 @@ var _ = Describe("FAR Destructive Tests",
 						node = &corev1.Node{}
 						Expect(APIClient.Get(ctx, client.ObjectKey{Name: targetNode.Name}, node)).To(Succeed())
 
-						Expect(helpers.WaitForEvents(ctx, APIClient.K8sClient,
+						Expect(helpers.WaitForEvents(ctx, EventsClient,
 							helpers.InvolvedObjectRef{
 								Kind:      "FenceAgentsRemediation",
 								Name:      targetNode.Name,
@@ -643,7 +643,7 @@ var _ = Describe("FAR Destructive Tests",
 
 						By("Verifying remediation completion event on Node after failover")
 
-						Expect(helpers.WaitForEvents(ctx, APIClient.K8sClient,
+						Expect(helpers.WaitForEvents(ctx, EventsClient,
 							helpers.InvolvedObjectRef{
 								Kind: "Node",
 								Name: targetNode.Name,

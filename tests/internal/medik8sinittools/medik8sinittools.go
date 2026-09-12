@@ -4,11 +4,15 @@ import (
 	"github.com/medik8s/system-tests/tests/internal/inittools"
 	"github.com/medik8s/system-tests/tests/internal/medik8sconfig"
 	"github.com/rh-ecosystem-edge/eco-goinfra/pkg/clients"
+	"k8s.io/client-go/kubernetes"
 )
 
 var (
 	// APIClient provides API access to cluster.
 	APIClient *clients.Settings
+	// EventsClient is a high-QPS clientset for event verification and other
+	// poll-heavy reads that the default-throttled APIClient.K8sClient starves.
+	EventsClient kubernetes.Interface
 	// Medik8sConfig provides access to general configuration parameters.
 	Medik8sConfig *medik8sconfig.Medik8sConfig
 )
@@ -18,4 +22,5 @@ var (
 func init() {
 	Medik8sConfig = medik8sconfig.NewMedik8sConfig()
 	APIClient = inittools.APIClient
+	EventsClient = inittools.EventsClient
 }
