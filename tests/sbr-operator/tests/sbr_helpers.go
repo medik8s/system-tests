@@ -3,6 +3,7 @@ package tests
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -248,6 +249,32 @@ func pickTargetWorkerNode() string {
 	}
 
 	return ""
+}
+
+// agentAlivePeerCount fetches the agent's Prometheus metrics and counts how many peers
+// are currently marked alive (sbr_peer_status{status="alive"} == 1).
+func agentAlivePeerCount(agentPod *pod.Builder) (int, error) {
+	metricsURL := "http://localhost:" + sbrparams.AgentMetricsPort + "/metrics"
+
+	buf, execErr := agentPod.ExecCommand([]string{
+		"sh", "-c",
+		"curl -sf " + metricsURL + " 2>/dev/null",
+	})
+	if execErr != nil {
+		return 0, fmt.Errorf("metrics fetch from pod %s: %w", agentPod.Definition.Name, execErr)
+	}
+
+	alive := 0
+
+	for _, line := range strings.Split(buf.String(), "\n") {
+		if strings.Contains(line, `sbr_peer_status`) &&
+			strings.Contains(line, `status="alive"`) &&
+			strings.HasSuffix(strings.TrimSpace(line), " 1") {
+			alive++
+		}
+	}
+
+	return alive, nil
 }
 
 // getSBRCRCondition returns the named status condition from an unstructured SBR CR, or nil.

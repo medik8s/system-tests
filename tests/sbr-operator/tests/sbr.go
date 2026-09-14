@@ -537,6 +537,32 @@ func discoverRWXStorageClass() string {
 	return ""
 }
 
+// discoverRBDStorageClass returns a Ceph RBD StorageClass name for block-mode PVCs.
+// Reads SBR_BLOCK_STORAGE_CLASS env var first; auto-discovers by provisioner rbd.csi.ceph.com.
+// Calls Skip when no RBD class is found and the env var is unset.
+func discoverRBDStorageClass() string {
+	if sbrparams.SBRBlockStorageClass != "" {
+		return sbrparams.SBRBlockStorageClass
+	}
+
+	scList, err := APIClient.StorageV1Interface.StorageClasses().List(context.TODO(), metav1.ListOptions{})
+	Expect(err).ToNot(HaveOccurred(), "Failed to list StorageClasses for RBD auto-discovery")
+
+	for idx := range scList.Items {
+		provisioner := scList.Items[idx].Provisioner
+		if strings.Contains(provisioner, "rbd.csi.ceph.com") {
+			GinkgoWriter.Printf("Auto-discovered Ceph RBD StorageClass: %s (provisioner: %s)\n",
+				scList.Items[idx].Name, provisioner)
+
+			return scList.Items[idx].Name
+		}
+	}
+
+	Skip("No Ceph RBD StorageClass found; set SBR_BLOCK_STORAGE_CLASS env var to override")
+
+	return ""
+}
+
 // waitForSBRCReady blocks until all pods in the agent DaemonSet for the named SBRC are ready.
 // The SBRRemediationReconciler runs inside agent pods, so this must be called before creating
 // any StorageBasedRemediation CR whose reconciliation depends on active agents. Waiting for all

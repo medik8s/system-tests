@@ -252,6 +252,9 @@ const (
 	// SBRCNHCTestName is the SBRC name for the NHC integration test (OCP-88879).
 	SBRCNHCTestName = "test-sbrc-nhc-integration"
 
+	// SBRCBlockDetectionTestName is the SBRC name for the block-mode node registration and detection test.
+	SBRCBlockDetectionTestName = "test-sbrc-block-detection"
+
 	// NHCTestName is the NodeHealthCheck CR name for the NHC integration test (OCP-88879).
 	NHCTestName = "nhc-sbr-integration"
 
@@ -331,6 +334,11 @@ var AgentExpectedMetricNames = []string{
 // Set SBR_STORAGE_CLASS env var to override auto-discovery (useful in air-gapped or non-ODF environments).
 // When empty, tests auto-discover a CephFS StorageClass (provisioner containing "cephfs").
 var SBRStorageClass = os.Getenv("SBR_STORAGE_CLASS")
+
+// SBRBlockStorageClass overrides auto-discovery for block-mode tests.
+// Set SBR_BLOCK_STORAGE_CLASS to a Ceph RBD StorageClass name (provisioner rbd.csi.ceph.com).
+// When empty, tests auto-discover by provisioner.
+var SBRBlockStorageClass = os.Getenv("SBR_BLOCK_STORAGE_CLASS")
 
 // WatchdogDebugImage is the container image for /dev/watchdog* discovery pods.
 // Must provide sh and ls. Set SBR_WATCHDOG_DEBUG_IMAGE to override (e.g. in disconnected clusters).
