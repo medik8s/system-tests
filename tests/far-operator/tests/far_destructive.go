@@ -165,8 +165,14 @@ var _ = Describe("FAR Destructive Tests",
 
 			if currentFARTemplateName != "" {
 				By("Safety net: deleting FAR template " + currentFARTemplateName)
-				_ = deleteRemediationCR(ctx, APIClient, farTemplateGVK, currentFARTemplateName)
-				currentFARTemplateName = ""
+
+				if err := deleteRemediationCR(ctx, APIClient, farTemplateGVK, currentFARTemplateName); err != nil {
+					message := fmt.Sprintf("failed to delete FAR template %s: %v", currentFARTemplateName, err)
+					GinkgoWriter.Printf("WARNING: %s\n", message)
+					AddReportEntry("far-template-cleanup-delete-failed", message)
+				} else {
+					currentFARTemplateName = ""
+				}
 			}
 
 			if targetNode != nil {

@@ -72,6 +72,7 @@ var _ = Describe("NHC+FAR Interop",
 			nodeParams   map[string]interface{}
 
 			nhcState             nhcRemediationState
+			secondNHCState       nhcRemediationState
 			kubeletStopAttempted bool
 			preservedDefaultNHC  *unstructured.Unstructured
 		)
@@ -247,6 +248,30 @@ var _ = Describe("NHC+FAR Interop",
 					AddReportEntry("nhc-cleanup-node-recovery-failed", message)
 				}
 			}
+
+			if secondNHCState.targetNode != "" {
+				By("Cleanup: restoring second NHC target " + secondNHCState.targetNode)
+
+				if secondNHCState.farName != "" {
+					_ = deleteRemediationCR(ctx, APIClient, farGVK, secondNHCState.farName)
+				}
+
+				node := &corev1.Node{}
+				if err := APIClient.Get(ctx, client.ObjectKey{Name: secondNHCState.targetNode}, node); err == nil {
+					if secondNHCState.hadLabel {
+						node.Labels[farparams.NHCInteropLabelKey] = secondNHCState.previousLabel
+					} else {
+						delete(node.Labels, farparams.NHCInteropLabelKey)
+					}
+
+					_ = APIClient.Update(ctx, node)
+				}
+
+				startKubeletAfterRemediation(ctx, secondNHCState.targetNode)
+				_ = farutils.WaitForNodeReady(ctx, APIClient, secondNHCState.targetNode,
+					farparams.NodeReadyTimeout, GinkgoWriter.Printf)
+				secondNHCState = nhcRemediationState{}
+			}
 		})
 
 		// Keep OCP-61309 separate for its happy-path traceability; OCP-90159
@@ -256,14 +281,18 @@ var _ = Describe("NHC+FAR Interop",
 			Label(labels.TierAcceptance),
 			func() {
 				By("Triggering NHC remediation through a FAR template")
+				ensureDestructiveWorkerCapacity(ctx, APIClient)
 
 				nhcState = nhcRemediationState{}
 				triggerNHCRemediation(ctx, APIClient, &nhcState, &kubeletStopAttempted, leaderNode, fenceAgent,
 					"nhc-far", true, sharedParams, nodeParams)
+				triggerSecondNHCRemediation(ctx, APIClient, &secondNHCState, &kubeletStopAttempted,
+					leaderNode, nhcState.targetNode, nhcState.nhcName, nhcState.labelValue)
 
-				By("Verifying the node rebooted and recovered")
+				By("Verifying both nodes rebooted and recovered")
 
 				waitForRemediation(ctx, APIClient, nhcState.targetNode, nhcState.oldBootID)
+				waitForRemediation(ctx, APIClient, secondNHCState.targetNode, secondNHCState.oldBootID)
 			})
 
 		It("should default to reboot when FAR template omits action",
@@ -493,21 +522,79 @@ func triggerNHCRemediation(
 	state.farName = waitForNHCCreatedFAR(ctx, apiClient, targetNode.Name, nhc.GetUID())
 }
 
+func triggerSecondNHCRemediation(
+	ctx context.Context,
+	apiClient client.Client,
+	state *nhcRemediationState,
+	kubeletStopAttempted *bool,
+	leaderNode, firstTargetNode, nhcName, labelValue string,
+) {
+	GinkgoHelper()
+
+	By("Selecting a second non-leader worker node")
+
+	targetNode, err := selectDedicatedWorkerNode(ctx, apiClient, leaderNode, firstTargetNode)
+	Expect(err).ToNot(HaveOccurred())
+
+	state.targetNode = targetNode.Name
+	state.labelValue = labelValue
+
+	node := &corev1.Node{}
+	Expect(apiClient.Get(ctx, client.ObjectKey{Name: targetNode.Name}, node)).To(Succeed())
+
+	if node.Labels == nil {
+		node.Labels = make(map[string]string)
+	}
+
+	state.previousLabel, state.hadLabel = node.Labels[farparams.NHCInteropLabelKey]
+	node.Labels[farparams.NHCInteropLabelKey] = labelValue
+	Expect(apiClient.Update(ctx, node)).To(Succeed())
+
+	state.labelApplied = true
+
+	removeWorkloadImage(ctx, targetNode.Name)
+	state.oldBootID, err = farutils.GetNodeBootIDFromAPI(ctx, apiClient, targetNode.Name)
+	Expect(err).ToNot(HaveOccurred())
+
+	*kubeletStopAttempted = true
+
+	Expect(stopKubeletForRemediation(ctx, targetNode.Name)).To(Succeed(),
+		"Failed to stop kubelet on %s", targetNode.Name)
+	Expect(farutils.WaitForNodeNotReady(ctx, apiClient, targetNode.Name,
+		farparams.NodeNotReadyTimeout, GinkgoWriter.Printf)).To(Succeed(),
+		"Node %s did not become NotReady after kubelet stop", targetNode.Name)
+
+	nhc := &unstructured.Unstructured{}
+	nhc.SetGroupVersionKind(nhcGVK)
+	Expect(apiClient.Get(ctx, client.ObjectKey{Name: nhcName}, nhc)).To(Succeed())
+	state.farName = waitForNHCCreatedFAR(ctx, apiClient, targetNode.Name, nhc.GetUID())
+}
+
 func selectDedicatedWorkerNode(
-	ctx context.Context, apiClient client.Client, excludedNode string,
+	ctx context.Context, apiClient client.Client, excludedNodes ...string,
 ) (*corev1.Node, error) {
 	workers, err := helpers.ListSchedulableWorkerNodes(ctx, apiClient)
 	if err != nil {
 		return nil, err
 	}
 
-	for i := range workers {
-		if workers[i].Name != excludedNode {
-			return &workers[i], nil
+	for index := range workers {
+		isExcluded := false
+
+		for _, excludedNode := range excludedNodes {
+			if workers[index].Name == excludedNode {
+				isExcluded = true
+
+				break
+			}
+		}
+
+		if !isExcluded {
+			return &workers[index], nil
 		}
 	}
 
-	return nil, fmt.Errorf("no eligible dedicated Ready worker node found (excluded: %s)", excludedNode)
+	return nil, fmt.Errorf("no eligible dedicated Ready worker node found")
 }
 
 func buildNHCUnstructured(
