@@ -1,0 +1,40 @@
+# See the OWNERS docs at https://go.k8s.io/owners
+
+aliases:
+  approvers:
+    - mshitrit
+    - razo7
+    - beekhof
+    - clobrano
+    - ugreener
+    - mhabashrh
+    - lyfofvipin
+    - rbartal
+    - swgoswam
+    - maximunited
+    - weshayutin
+    - mpryc
+    - jmontleon
+    - abrugaro
+    - eemcmullan
+    - JonahSussman
+    - pranavgaikwad
+
+  code-reviewers:
+    - mshitrit
+    - razo7
+    - beekhof
+    - clobrano
+    - ugreener
+    - mhabashrh
+    - lyfofvipin
+    - rbartal
+    - swgoswam
+    - maximunited
+    - weshayutin
+    - mpryc
+    - jmontleon
+    - abrugaro
+    - eemcmullan
+    - JonahSussman
+    - pranavgaikwad

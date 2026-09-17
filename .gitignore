@@ -1,0 +1,43 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+**/*.swp
+
+# Test binary, built with `go test -c`
+*.test
+
+# Eclipse files
+**/.asciidoctorconfig.adoc
+**/.project
+**/.pydevproject
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+.idea
+reports
+.vscode
+
+# Test dump directories
+**/dump/
+
+.claude/
+CLAUDE.local.md
+.npm-cache/
+
+# macOS
+.DS_Store
+
+# Go
+go.work
+go.work.sum
+bin/
+coverage.html
+
+# Prow / OpenShift CI
+kubeconfig
+*.kubeconfig
+_output/

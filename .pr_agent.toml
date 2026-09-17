@@ -1,0 +1,7 @@
+[pr_test]
+# Disable PR-Agent's /test <component> command.
+# OpenShift CI uses prow's /test <job-name> convention; when a contributor
+# posts "/test 4.22-konflux-e2e-sbr-aws-odf", Qodo/PR-Agent intercepts it
+# and responds with an unhelpful "component not found" error.
+# Disabling this command eliminates the collision.
+enable = false

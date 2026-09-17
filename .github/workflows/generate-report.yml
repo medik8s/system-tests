@@ -1,0 +1,96 @@
+name: Generate Tests Report
+
+on:
+  workflow_dispatch:
+
+  push:
+    branches:
+      - main
+      - "release-[0-9].[0-9][0-9]"
+
+jobs:
+  build:
+    if: github.repository_owner == 'medik8s'
+    runs-on: ubuntu-latest
+    env:
+      SHELL: /bin/bash
+      XDG_CACHE_HOME: ${{ github.workspace }}/cache
+
+    steps:
+      # We are facing some issues with disk space, so free up what we can.
+      - name: Free Disk Space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+
+      # Since we only use the checked out repo for the report generation code,
+      # always grab the latest from the default branch rather than the branch
+      # that triggered this action.
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Install ginkgo
+        run: make install-ginkgo
+
+      # Artifacts are scoped per workflow run, so we have to get the last run
+      # of this workflow to download the cache. Since the current run would be
+      # the last, we actually get the second-to-last run returned.
+      - name: Get last workflow run ID
+        id: get-last-run
+        run: echo last-run=$(gh run list -R "${{ github.repository }}" -w "${{ github.workflow }}" --json databaseId -q '.[1].databaseId' -L 2) >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Actions cache is immutable, so to prevent generating a new cache every
+      # run when we only care about the latest cache, use an artifact instead
+      # and just overwrite every run.
+      - name: Restore report cache
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: report-cache
+          path: ${{ env.XDG_CACHE_HOME }}/system-tests
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ steps.get-last-run.outputs.last-run }}
+
+      - name: Generate report
+        run: go run ./internal/report -v 100 -b 'main release-*' -o ./report -a "${ACTION_URL}"
+        env:
+          ACTION_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+      - name: Upload generated report as artifact
+        id: upload-pages
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: ./report
+
+      - name: Save report cache
+        uses: actions/upload-artifact@v7
+        with:
+          name: report-cache
+          overwrite: true
+          path: ${{ env.XDG_CACHE_HOME }}/system-tests
+
+  deploy:
+    needs: build
+    if: github.repository_owner == 'medik8s'
+
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.upload-pages.outputs.page_url }}
+
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub pages
+        id: upload-pages
+        uses: actions/deploy-pages@v5
