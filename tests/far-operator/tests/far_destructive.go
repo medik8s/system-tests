@@ -130,7 +130,8 @@ var _ = Describe("FAR Destructive Tests",
 
 				By("Deleting FAR CR " + currentFARName)
 				farNodeName := currentFARName
-				_ = deleteRemediationCR(ctx, APIClient, farGVK, currentFARName)
+				Expect(deleteRemediationCR(ctx, APIClient, farGVK, currentFARName)).To(Succeed(),
+					"Failed to delete FAR CR %s", currentFARName)
 				currentFARName = ""
 
 				By("Verifying FAR NoSchedule taint removed after CR deletion")

@@ -43,6 +43,17 @@ var nhcGVK = schema.GroupVersionKind{
 	Kind:    "NodeHealthCheck",
 }
 
+// nhcRemediationState holds the mutable test state produced by
+// triggerNHCRemediation so the JustAfterEach cleanup can reference it.
+type nhcRemediationState struct {
+	targetNode string
+	nhcName    string
+	fartName   string
+	labelValue string
+	farName    string
+	oldBootID  string
+}
+
 var _ = Describe("NHC+FAR Interop",
 	Ordered, ContinueOnFailure, Serial,
 	Label(labels.OperatorFAR, labels.OperatorNHC, labels.OperatorInterop,
@@ -56,11 +67,7 @@ var _ = Describe("NHC+FAR Interop",
 			sharedParams map[string]interface{}
 			nodeParams   map[string]interface{}
 
-			currentNHCName       string
-			currentFARTName      string
-			currentLabelVal      string
-			currentTargetNode    string
-			currentFARName       string
+			nhcState             nhcRemediationState
 			kubeletStopAttempted bool
 		)
 
@@ -93,27 +100,27 @@ var _ = Describe("NHC+FAR Interop",
 			if CurrentSpecReport().Failed() {
 				GinkgoWriter.Println("Test failed - collecting diagnostics")
 				logFARControllerState(ctx, APIClient)
-				logNHCDiagnostics(ctx, currentNHCName, currentTargetNode)
-				logKubeletDiagnostics(ctx, currentTargetNode)
+				logNHCDiagnostics(ctx, nhcState.nhcName, nhcState.targetNode)
+				logKubeletDiagnostics(ctx, nhcState.targetNode)
 			}
 
 			nhcRemoved := true
 
-			if currentNHCName != "" {
-				By("Cleanup: deleting NHC " + currentNHCName)
+			if nhcState.nhcName != "" {
+				By("Cleanup: deleting NHC " + nhcState.nhcName)
 
-				if err := deleteRemediationCR(ctx, APIClient, nhcGVK, currentNHCName); err != nil {
-					message := fmt.Sprintf("failed to delete NHC %s: %v", currentNHCName, err)
+				if err := deleteRemediationCR(ctx, APIClient, nhcGVK, nhcState.nhcName); err != nil {
+					message := fmt.Sprintf("failed to delete NHC %s: %v", nhcState.nhcName, err)
 					GinkgoWriter.Printf("WARNING: %s\n", message)
 					AddReportEntry("nhc-cleanup-delete-failed", message)
 
 					nhcRemoved = false
 				} else {
-					currentNHCName = ""
+					nhcState.nhcName = ""
 				}
 			}
 
-			if nhcRemoved && currentFARName != "" {
+			if nhcRemoved && nhcState.farName != "" {
 				By("Cleanup: waiting for FAR CR to reach Succeeded before deletion")
 
 				pollCtx, pollCancel := context.WithTimeout(ctx, farparams.FARConditionTimeout)
@@ -125,44 +132,44 @@ var _ = Describe("NHC+FAR Interop",
 						farObj.SetGroupVersionKind(farGVK)
 
 						if err := APIClient.Get(ctx, client.ObjectKey{
-							Name:      currentFARName,
+							Name:      nhcState.farName,
 							Namespace: medik8sparams.OperatorNs,
 						}, farObj); err != nil {
 							if k8serrors.IsNotFound(err) {
 								return true, nil
 							}
 
-							return false, fmt.Errorf("get FAR CR %s: %w", currentTargetNode, err)
+							return false, fmt.Errorf("get FAR CR %s: %w", nhcState.targetNode, err)
 						}
 
 						return farConditionSucceeded(farObj), nil
 					},
 				); pollErr != nil {
 					message := fmt.Sprintf("FAR CR %s did not reach Succeeded or disappear before cleanup: %v",
-						currentTargetNode, pollErr)
+						nhcState.targetNode, pollErr)
 					GinkgoWriter.Printf("WARNING: %s\n", message)
 					AddReportEntry("nhc-cleanup-far-wait-failed", message)
 				}
 
-				By("Cleanup: deleting FAR CR for " + currentTargetNode)
+				By("Cleanup: deleting FAR CR for " + nhcState.targetNode)
 
-				_ = deleteRemediationCR(ctx, APIClient, farGVK, currentFARName)
-				currentFARName = ""
+				_ = deleteRemediationCR(ctx, APIClient, farGVK, nhcState.farName)
+				nhcState.farName = ""
 			}
 
-			if nhcRemoved && currentFARTName != "" {
-				By("Cleanup: deleting FART " + currentFARTName)
-				_ = deleteRemediationCR(ctx, APIClient, fartGVK, currentFARTName)
-				currentFARTName = ""
+			if nhcRemoved && nhcState.fartName != "" {
+				By("Cleanup: deleting FART " + nhcState.fartName)
+				_ = deleteRemediationCR(ctx, APIClient, fartGVK, nhcState.fartName)
+				nhcState.fartName = ""
 			}
 
-			if currentTargetNode != "" && currentLabelVal != "" {
-				By("Cleanup: removing interop label from " + currentTargetNode)
+			if nhcState.targetNode != "" && nhcState.labelValue != "" {
+				By("Cleanup: removing interop label from " + nhcState.targetNode)
 
 				updateErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 					node := &corev1.Node{}
 					if err := APIClient.Get(ctx, client.ObjectKey{
-						Name: currentTargetNode,
+						Name: nhcState.targetNode,
 					}, node); err != nil {
 						if k8serrors.IsNotFound(err) {
 							return nil
@@ -177,17 +184,17 @@ var _ = Describe("NHC+FAR Interop",
 				})
 				if updateErr != nil {
 					message := fmt.Sprintf("failed to remove interop label from %s: %v",
-						currentTargetNode, updateErr)
+						nhcState.targetNode, updateErr)
 					GinkgoWriter.Printf("WARNING: %s\n", message)
 					AddReportEntry("nhc-cleanup-label-removal-failed", message)
 				}
 
-				currentLabelVal = ""
+				nhcState.labelValue = ""
 			}
 
-			if currentTargetNode != "" {
-				nodeName := currentTargetNode
-				currentTargetNode = ""
+			if nhcState.targetNode != "" {
+				nodeName := nhcState.targetNode
+				nhcState.targetNode = ""
 
 				if kubeletStopAttempted {
 					By("Cleanup: unmasking and restarting kubelet on " + nodeName)
@@ -209,98 +216,6 @@ var _ = Describe("NHC+FAR Interop",
 			}
 		})
 
-		triggerNHCRemediation := func(testPrefix string, includeAction bool) (string, string) {
-			By("Selecting a non-leader worker node")
-
-			targetNode, err := helpers.SelectWorkerNode(ctx, APIClient, leaderNode)
-			Expect(err).ToNot(HaveOccurred())
-
-			currentTargetNode = targetNode.Name
-			GinkgoWriter.Printf("Selected target node: %s\n", targetNode.Name)
-
-			By("Labeling target node " + targetNode.Name + " for NHC scope")
-
-			labelValue := fmt.Sprintf("%s-%d", testPrefix, time.Now().UnixMilli())
-			currentLabelVal = labelValue
-
-			node := &corev1.Node{}
-			Expect(APIClient.Get(ctx, client.ObjectKey{Name: targetNode.Name}, node)).To(Succeed())
-
-			if node.Labels == nil {
-				node.Labels = make(map[string]string)
-			}
-
-			node.Labels[farparams.NHCInteropLabelKey] = labelValue
-			Expect(APIClient.Update(ctx, node)).To(Succeed())
-
-			By("Cleaning CRI-O overlay on " + targetNode.Name)
-			removeWorkloadImage(ctx, targetNode.Name)
-
-			By("Recording boot ID before remediation")
-
-			oldBootID, err := farutils.GetNodeBootIDFromAPI(ctx, APIClient, targetNode.Name)
-			Expect(err).ToNot(HaveOccurred())
-
-			fartName := fmt.Sprintf("fart-%s", testPrefix)
-			currentFARTName = fartName
-
-			By("Creating FART " + fartName)
-
-			fartSharedParams := make(map[string]interface{}, len(sharedParams))
-			for k, v := range sharedParams {
-				if !includeAction && k == "--action" {
-					continue
-				}
-
-				fartSharedParams[k] = v
-			}
-
-			fart := buildFARTUnstructured(fartName, fenceAgent, fartSharedParams, nodeParams)
-			_ = deleteRemediationCR(ctx, APIClient, fartGVK, fartName)
-			Expect(APIClient.Create(ctx, fart)).To(Succeed(),
-				"Failed to create FART %s", fartName)
-
-			nhcName := fmt.Sprintf("nhc-%s", testPrefix)
-			currentNHCName = nhcName
-
-			By("Creating NHC " + nhcName + " pointing to FART " + fartName)
-
-			nhc := buildNHCUnstructured(nhcName, fartName, medik8sparams.OperatorNs, labelValue)
-
-			_ = deleteRemediationCR(ctx, APIClient, nhcGVK, nhcName)
-
-			By("Removing any stale FAR remediation for " + targetNode.Name)
-			_ = deleteRemediationCR(ctx, APIClient, farGVK, targetNode.Name)
-
-			testStartTime := time.Now()
-
-			Expect(APIClient.Create(ctx, nhc)).To(Succeed(),
-				"Failed to create NHC %s", nhcName)
-
-			By("Waiting for NHC " + nhcName + " to reach Enabled phase")
-			waitForNHCEnabled(ctx, nhcName)
-
-			By("Stopping kubelet on " + targetNode.Name)
-
-			kubeletStopAttempted = true
-
-			Expect(stopKubeletForRemediation(
-				ctx, targetNode.Name)).To(Succeed(),
-				"Failed to stop kubelet on %s", targetNode.Name)
-
-			By("Verifying " + targetNode.Name + " becomes NotReady")
-
-			Expect(farutils.WaitForNodeNotReady(
-				ctx, APIClient, targetNode.Name,
-				farparams.NodeNotReadyTimeout, GinkgoWriter.Printf)).To(Succeed(),
-				"Node %s did not become NotReady after kubelet stop", targetNode.Name)
-
-			By("Waiting for NHC to create FAR CR for " + targetNode.Name)
-			currentFARName = waitForNHCCreatedFAR(ctx, APIClient, targetNode.Name, nhcName, testStartTime)
-
-			return targetNode.Name, oldBootID
-		}
-
 		// Keep OCP-61309 separate for its happy-path traceability; OCP-90159
 		// extends the same flow with lifecycle assertions.
 		It("should remediate unhealthy node when NHC uses FART",
@@ -309,11 +224,13 @@ var _ = Describe("NHC+FAR Interop",
 			func() {
 				By("Triggering NHC remediation through a FART")
 
-				nodeName, oldBootID := triggerNHCRemediation("nhc-far", true)
+				nhcState = triggerNHCRemediation(ctx, APIClient, leaderNode, fenceAgent,
+					"nhc-far", true, sharedParams, nodeParams)
+				kubeletStopAttempted = true
 
 				By("Verifying the node rebooted and recovered")
 
-				waitForRemediation(ctx, APIClient, nodeName, oldBootID)
+				waitForRemediation(ctx, APIClient, nhcState.targetNode, nhcState.oldBootID)
 			})
 
 		It("should default to reboot when FART omits action",
@@ -322,11 +239,13 @@ var _ = Describe("NHC+FAR Interop",
 			func() {
 				By("Triggering NHC remediation through a FART without an action")
 
-				nodeName, oldBootID := triggerNHCRemediation("nhc-far-noaction", false)
+				nhcState = triggerNHCRemediation(ctx, APIClient, leaderNode, fenceAgent,
+					"nhc-far-noaction", false, sharedParams, nodeParams)
+				kubeletStopAttempted = true
 
 				By("Verifying the node rebooted and recovered")
 
-				waitForRemediation(ctx, APIClient, nodeName, oldBootID)
+				waitForRemediation(ctx, APIClient, nhcState.targetNode, nhcState.oldBootID)
 			})
 
 		It("should emit expected FAR controller log messages during NHC-triggered remediation",
@@ -334,8 +253,12 @@ var _ = Describe("NHC+FAR Interop",
 			Label(labels.TierAcceptance),
 			func() {
 				logStartTime := time.Now()
-				nodeName, oldBootID := triggerNHCRemediation("nhc-far-logs", true)
-				waitForRemediation(ctx, APIClient, nodeName, oldBootID)
+
+				nhcState = triggerNHCRemediation(ctx, APIClient, leaderNode, fenceAgent,
+					"nhc-far-logs", true, sharedParams, nodeParams)
+				kubeletStopAttempted = true
+
+				waitForRemediation(ctx, APIClient, nhcState.targetNode, nhcState.oldBootID)
 
 				By("Fetching FAR controller logs since test start")
 
@@ -349,7 +272,7 @@ var _ = Describe("NHC+FAR Interop",
 				}
 
 				Eventually(func(g Gomega) {
-					logs := getFARControllerLogsSince(ctx, logStartTime, nodeName)
+					logs := getFARControllerLogsSince(ctx, logStartTime, nhcState.targetNode)
 					g.Expect(logs).ToNot(BeEmpty(), "Failed to retrieve FAR controller logs")
 
 					for _, msg := range expectedMessages {
@@ -363,22 +286,24 @@ var _ = Describe("NHC+FAR Interop",
 			reportxml.ID("90159"),
 			Label(labels.TierInterop),
 			func() {
-				nodeName, oldBootID := triggerNHCRemediation("nhc-far-lifecycle", true)
+				nhcState = triggerNHCRemediation(ctx, APIClient, leaderNode, fenceAgent,
+					"nhc-far-lifecycle", true, sharedParams, nodeParams)
+				kubeletStopAttempted = true
 
-				By("Verifying FAR CR exists for " + nodeName)
+				By("Verifying FAR CR exists for " + nhcState.targetNode)
 
 				farObj := &unstructured.Unstructured{}
 				farObj.SetGroupVersionKind(farGVK)
 				Expect(APIClient.Get(ctx, client.ObjectKey{
-					Name: currentFARName, Namespace: medik8sparams.OperatorNs,
+					Name: nhcState.farName, Namespace: medik8sparams.OperatorNs,
 				}, farObj)).To(Succeed(),
 					"FAR CR should exist while remediation is in progress")
 
 				By("Waiting for node to reboot")
 				Expect(farutils.WaitForNodeReboot(
-					ctx, APIClient, nodeName, oldBootID,
+					ctx, APIClient, nhcState.targetNode, nhcState.oldBootID,
 					farparams.NodeRebootTimeout, GinkgoWriter.Printf)).To(Succeed(),
-					"Node %s did not reboot", nodeName)
+					"Node %s did not reboot", nhcState.targetNode)
 
 				By("Verifying FAR CR reached Succeeded or was cleaned up by NHC")
 
@@ -387,7 +312,7 @@ var _ = Describe("NHC+FAR Interop",
 					fresh.SetGroupVersionKind(farGVK)
 
 					err := APIClient.Get(ctx, client.ObjectKey{
-						Name: currentFARName, Namespace: medik8sparams.OperatorNs,
+						Name: nhcState.farName, Namespace: medik8sparams.OperatorNs,
 					}, fresh)
 					if k8serrors.IsNotFound(err) {
 						// NHC deletes the remediation CR once the node recovers.
@@ -400,7 +325,7 @@ var _ = Describe("NHC+FAR Interop",
 					}
 
 					if !farConditionSucceeded(fresh) {
-						return fmt.Errorf("FAR CR %s exists but has not reached Succeeded", currentFARName)
+						return fmt.Errorf("FAR CR %s exists but has not reached Succeeded", nhcState.farName)
 					}
 
 					return nil
@@ -412,7 +337,7 @@ var _ = Describe("NHC+FAR Interop",
 				Eventually(func(g Gomega) { //nolint:varnamelen
 					node := &corev1.Node{}
 					g.Expect(APIClient.Get(ctx, client.ObjectKey{
-						Name: nodeName,
+						Name: nhcState.targetNode,
 					}, node)).To(Succeed())
 
 					g.Expect(helpers.IsNodeReady(node)).To(BeTrue(),
@@ -427,6 +352,108 @@ var _ = Describe("NHC+FAR Interop",
 				}, farparams.NHCRecoveryTimeout, farparams.DefaultPollInterval).Should(Succeed())
 			})
 	})
+
+//nolint:funlen // orchestration helper; splitting would fragment the remediation flow
+func triggerNHCRemediation(
+	ctx context.Context,
+	apiClient client.Client,
+	leaderNode, fenceAgent, testPrefix string,
+	includeAction bool,
+	sharedParams, nodeParams map[string]interface{},
+) nhcRemediationState {
+	GinkgoHelper()
+
+	By("Selecting a non-leader worker node")
+
+	targetNode, err := helpers.SelectWorkerNode(ctx, apiClient, leaderNode)
+	Expect(err).ToNot(HaveOccurred())
+
+	GinkgoWriter.Printf("Selected target node: %s\n", targetNode.Name)
+
+	By("Labeling target node " + targetNode.Name + " for NHC scope")
+
+	labelValue := fmt.Sprintf("%s-%d", testPrefix, time.Now().UnixMilli())
+
+	node := &corev1.Node{}
+	Expect(apiClient.Get(ctx, client.ObjectKey{Name: targetNode.Name}, node)).To(Succeed())
+
+	if node.Labels == nil {
+		node.Labels = make(map[string]string)
+	}
+
+	node.Labels[farparams.NHCInteropLabelKey] = labelValue
+	Expect(apiClient.Update(ctx, node)).To(Succeed())
+
+	By("Cleaning CRI-O overlay on " + targetNode.Name)
+	removeWorkloadImage(ctx, targetNode.Name)
+
+	By("Recording boot ID before remediation")
+
+	oldBootID, err := farutils.GetNodeBootIDFromAPI(ctx, apiClient, targetNode.Name)
+	Expect(err).ToNot(HaveOccurred())
+
+	fartName := fmt.Sprintf("fart-%s", testPrefix)
+
+	By("Creating FART " + fartName)
+
+	fartSharedParams := make(map[string]interface{}, len(sharedParams))
+	for k, v := range sharedParams {
+		if !includeAction && k == "--action" {
+			continue
+		}
+
+		fartSharedParams[k] = v
+	}
+
+	fart := buildFARTUnstructured(fartName, fenceAgent, fartSharedParams, nodeParams)
+	_ = deleteRemediationCR(ctx, apiClient, fartGVK, fartName)
+	Expect(apiClient.Create(ctx, fart)).To(Succeed(),
+		"Failed to create FART %s", fartName)
+
+	nhcName := fmt.Sprintf("nhc-%s", testPrefix)
+
+	By("Creating NHC " + nhcName + " pointing to FART " + fartName)
+
+	nhc := buildNHCUnstructured(nhcName, fartName, medik8sparams.OperatorNs, labelValue)
+
+	_ = deleteRemediationCR(ctx, apiClient, nhcGVK, nhcName)
+
+	By("Removing any stale FAR remediation for " + targetNode.Name)
+	_ = deleteRemediationCR(ctx, apiClient, farGVK, targetNode.Name)
+
+	testStartTime := time.Now()
+
+	Expect(apiClient.Create(ctx, nhc)).To(Succeed(),
+		"Failed to create NHC %s", nhcName)
+
+	By("Waiting for NHC " + nhcName + " to reach Enabled phase")
+	waitForNHCEnabled(ctx, nhcName)
+
+	By("Stopping kubelet on " + targetNode.Name)
+
+	Expect(stopKubeletForRemediation(
+		ctx, targetNode.Name)).To(Succeed(),
+		"Failed to stop kubelet on %s", targetNode.Name)
+
+	By("Verifying " + targetNode.Name + " becomes NotReady")
+
+	Expect(farutils.WaitForNodeNotReady(
+		ctx, apiClient, targetNode.Name,
+		farparams.NodeNotReadyTimeout, GinkgoWriter.Printf)).To(Succeed(),
+		"Node %s did not become NotReady after kubelet stop", targetNode.Name)
+
+	By("Waiting for NHC to create FAR CR for " + targetNode.Name)
+	farName := waitForNHCCreatedFAR(ctx, apiClient, targetNode.Name, nhcName, testStartTime)
+
+	return nhcRemediationState{
+		targetNode: targetNode.Name,
+		nhcName:    nhcName,
+		fartName:   fartName,
+		labelValue: labelValue,
+		farName:    farName,
+		oldBootID:  oldBootID,
+	}
+}
 
 func buildNHCUnstructured(
 	name, fartName, fartNamespace, labelValue string,
