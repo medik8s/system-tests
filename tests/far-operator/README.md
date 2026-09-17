@@ -266,15 +266,15 @@ Deletes the FAR controller pods to isolate logs, then creates a FAR CR with an i
 
 ## NHC+FAR Interop Tests
 
-Tests validating integration between Node Healthcheck (NHC) and Fence Agents Remediation (FAR) through FenceAgentsRemediationTemplate (FART).
+Tests validating integration between Node Healthcheck (NHC) and Fence Agents Remediation (FAR) through a FenceAgentsRemediationTemplate (FAR template).
 
-### 22. Verify NHC-Triggered FAR Remediation via FART ([OCP-61309](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-61309))
+### 22. Verify NHC-Triggered FAR Remediation via FAR Template ([OCP-61309](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-61309))
 
-Triggers FAR remediation through an NHC resource and FART template after stopping kubelet on a worker node.
+Triggers FAR remediation through an NHC resource and FAR template after stopping kubelet on a worker node.
 
-### 23. Verify NHC+FAR Default Reboot When FART Omits Action ([OCP-66204](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-66204))
+### 23. Verify NHC+FAR Default Reboot When FAR Template Omits Action ([OCP-66204](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-66204))
 
-Validates that FAR defaults to reboot when the FART omits the action parameter.
+Validates that FAR defaults to reboot when the FAR template omits the action parameter.
 
 ### 24. Verify FAR Controller Logs During NHC-Triggered Remediation ([OCP-70872](https://polarion.engineering.redhat.com/polarion/#/project/OSE/workitem?id=OCP-70872))
 

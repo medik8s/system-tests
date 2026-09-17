@@ -35,7 +35,7 @@ var farGVK = schema.GroupVersionKind{
 	Kind:    "FenceAgentsRemediation",
 }
 
-var fartGVK = schema.GroupVersionKind{
+var farTemplateGVK = schema.GroupVersionKind{
 	Group:   "fence-agents-remediation.medik8s.io",
 	Version: "v1alpha1",
 	Kind:    "FenceAgentsRemediationTemplate",
@@ -48,18 +48,19 @@ var _ = Describe("FAR Destructive Tests",
 		labels.PlatformAWS, labels.FrequencyWeekly),
 	func() {
 		var (
-			ctx             context.Context
-			fenceAgent      string
-			leaderNode      string
-			targetNode      *corev1.Node
-			sharedParams    map[string]interface{}
-			nodeParams      map[string]interface{}
-			currentFARTName string
-			currentFARName  string
+			ctx                    context.Context
+			fenceAgent             string
+			leaderNode             string
+			targetNode             *corev1.Node
+			sharedParams           map[string]interface{}
+			nodeParams             map[string]interface{}
+			currentFARTemplateName string
+			currentFARName         string
 		)
 
 		BeforeAll(func() {
 			ctx = context.Background()
+			ensureDestructiveWorkerCapacity(ctx, APIClient)
 
 			prereqs := setupAWSFARPrerequisites(ctx, APIClient)
 			fenceAgent = prereqs.fenceAgent
@@ -162,10 +163,10 @@ var _ = Describe("FAR Destructive Tests",
 				}
 			}
 
-			if currentFARTName != "" {
-				By("Safety net: deleting FART " + currentFARTName)
-				_ = deleteRemediationCR(ctx, APIClient, fartGVK, currentFARTName)
-				currentFARTName = ""
+			if currentFARTemplateName != "" {
+				By("Safety net: deleting FAR template " + currentFARTemplateName)
+				_ = deleteRemediationCR(ctx, APIClient, farTemplateGVK, currentFARTemplateName)
+				currentFARTemplateName = ""
 			}
 
 			if targetNode != nil {
@@ -1166,7 +1167,7 @@ func buildFARUnstructured(
 	}
 }
 
-func buildFARTUnstructured(
+func buildFARTemplateUnstructured(
 	name, agent string,
 	sharedParams, nodeParams map[string]interface{},
 ) *unstructured.Unstructured {
@@ -1242,20 +1243,12 @@ func createFARCR(
 	// helpers, unlike a fixed EventuallyWithOffset.
 	GinkgoHelper()
 
-	_ = deleteRemediationCR(ctx, k8sClient, farCR.GroupVersionKind(),
-		farCR.GetName())
+	Expect(deleteRemediationCR(ctx, k8sClient, farCR.GroupVersionKind(),
+		farCR.GetName())).To(Succeed(), "Failed to delete existing FAR CR before creation")
 
 	Eventually(func(assertion Gomega) {
 		err := k8sClient.Create(ctx, farCR)
 		if err != nil {
-			if k8serrors.IsAlreadyExists(err) {
-				GinkgoWriter.Printf(
-					"INFO: FAR CR %s already exists (prior delete may not have finalized), treating as success\n",
-					farCR.GetName())
-
-				return
-			}
-
 			assertion.Expect(err).ToNot(HaveOccurred(),
 				"Failed to create FAR CR")
 		}

@@ -18,6 +18,11 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
+const (
+	sshConnectionAttempts = 2
+	sshRetryDelay         = time.Second
+)
+
 // RunOnNode executes a command on the specified node using
 // "oc debug node/<name> -- chroot /host <cmd>".
 func RunOnNode(
@@ -426,7 +431,7 @@ func runSSHWithOutput(
 
 	var err error
 
-	for attempt := 0; attempt < 2; attempt++ {
+	for attempt := 0; attempt < sshConnectionAttempts; attempt++ {
 		stdout.Reset()
 		stderr.Reset()
 
@@ -439,7 +444,22 @@ func runSSHWithOutput(
 			break
 		}
 
-		time.Sleep(time.Second)
+		if attempt == sshConnectionAttempts-1 {
+			break
+		}
+
+		timer := time.NewTimer(sshRetryDelay)
+		select {
+		case <-childCtx.Done():
+			timer.Stop()
+
+			break
+		case <-timer.C:
+		}
+
+		if childCtx.Err() != nil {
+			break
+		}
 	}
 
 	if err != nil {

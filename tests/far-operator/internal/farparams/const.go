@@ -87,7 +87,7 @@ const (
 	// DefaultPollInterval to reduce List pressure on the shared rate-limited client.
 	EventVerifyInterval = 10 * time.Second
 
-	// RemediationCRDeletionTimeout is how long to wait for a FAR/FART CR to be fully deleted.
+	// RemediationCRDeletionTimeout is how long to wait for a FAR or FAR template CR to be fully deleted.
 	RemediationCRDeletionTimeout = 2 * time.Minute
 
 	// ControllerLeaseName is the FAR leader election lease name (LeaderElectionID in cmd/main.go).
@@ -119,11 +119,11 @@ const (
 	// WorkloadPodReadyTimeout is how long to wait for a test workload pod to reach Running.
 	WorkloadPodReadyTimeout = 2 * time.Minute
 
-	// FARCRRetryCount is the retry count for FAR/FART CR spec (matches upstream default).
+	// FARCRRetryCount is the retry count for FAR and FAR template CR specs (matches upstream default).
 	FARCRRetryCount = 10
-	// FARCRRetryInterval is the retry interval for FAR/FART CR spec.
+	// FARCRRetryInterval is the retry interval for FAR and FAR template CR specs.
 	FARCRRetryInterval = "20s"
-	// FARCRTimeout is the fence agent command timeout for FAR/FART CR spec.
+	// FARCRTimeout is the fence agent command timeout for FAR and FAR template CR specs.
 	FARCRTimeout = "60s"
 	// FARCRRemediationStrategy is the default remediation strategy for FAR CRs.
 	FARCRRemediationStrategy = "OutOfServiceTaint"

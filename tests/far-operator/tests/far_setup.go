@@ -3,6 +3,7 @@ package tests
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -30,6 +31,13 @@ type awsFARPrerequisites struct {
 	nodeParams   map[string]interface{}
 }
 
+var (
+	previousCredentialsSecret *corev1.Secret
+	credentialsSecretCreated  bool
+	credentialsSecretManaged  bool
+	credentialsSecretMutex    sync.Mutex
+)
+
 func setupAWSFARPrerequisites(ctx context.Context, apiClient *clients.Settings) awsFARPrerequisites {
 	GinkgoHelper()
 
@@ -42,7 +50,7 @@ func setupAWSFARPrerequisites(ctx context.Context, apiClient *clients.Settings) 
 		Skip(fmt.Sprintf("FAR tests require AWS, got %s", platform))
 	}
 
-	fenceAgent := resolveAndVerifyFAR(ctx, apiClient, platform, region)
+	fenceAgent := resolveAndVerifyFAR(apiClient, platform, region)
 	createCredentialsSecret(ctx, apiClient)
 	sharedParams, nodeParams := buildFenceParams(ctx, apiClient, region)
 	leaderNode := waitForLeaderElection(ctx, apiClient)
@@ -56,8 +64,7 @@ func setupAWSFARPrerequisites(ctx context.Context, apiClient *clients.Settings) 
 }
 
 func resolveAndVerifyFAR(
-	ctx context.Context, apiClient *clients.Settings,
-	platform configv1.PlatformType, region string,
+	apiClient *clients.Settings, platform configv1.PlatformType, region string,
 ) string {
 	GinkgoHelper()
 
@@ -76,21 +83,23 @@ func resolveAndVerifyFAR(
 	Expect(farDeploy.IsReady(medik8sparams.DefaultTimeout)).To(BeTrue(),
 		"FAR deployment is not Ready")
 
-	By(fmt.Sprintf("Verifying at least %d Ready worker nodes", farparams.MinWorkersForDestructiveTests))
+	return fenceAgent
+}
 
+func ensureDestructiveWorkerCapacity(ctx context.Context, apiClient client.Client) {
 	workerCount, err := helpers.CountReadyWorkerNodes(ctx, apiClient)
 	Expect(err).ToNot(HaveOccurred())
 
 	if workerCount < farparams.MinWorkersForDestructiveTests {
-		Skip(fmt.Sprintf("FAR tests require at least %d Ready workers, found %d",
+		Skip(fmt.Sprintf("FAR destructive tests require at least %d Ready workers, found %d",
 			farparams.MinWorkersForDestructiveTests, workerCount))
 	}
-
-	return fenceAgent
 }
 
 func createCredentialsSecret(ctx context.Context, apiClient client.Client) {
 	GinkgoHelper()
+	credentialsSecretMutex.Lock()
+	defer credentialsSecretMutex.Unlock()
 
 	By("Reading AWS credentials from CCO Secret")
 
@@ -111,7 +120,28 @@ func createCredentialsSecret(ctx context.Context, apiClient client.Client) {
 		},
 	}
 
+	if !credentialsSecretManaged {
+		existing := &corev1.Secret{}
+
+		err = apiClient.Get(ctx, client.ObjectKey{
+			Name: farparams.SharedCredentialsSecretName, Namespace: medik8sparams.OperatorNs,
+		}, existing)
+		if err == nil {
+			previousCredentialsSecret = existing.DeepCopy()
+		} else {
+			Expect(k8serrors.IsNotFound(err)).To(BeTrue(), "failed to read shared credentials Secret")
+		}
+
+		credentialsSecretManaged = true
+	}
+
 	err = apiClient.Create(ctx, credSecret)
+	if err == nil {
+		credentialsSecretCreated = true
+
+		return
+	}
+
 	if k8serrors.IsAlreadyExists(err) {
 		err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
 			existing := &corev1.Secret{}
@@ -134,6 +164,42 @@ func createCredentialsSecret(ctx context.Context, apiClient client.Client) {
 
 	Expect(err).ToNot(HaveOccurred(),
 		"Failed to create shared credentials Secret")
+}
+
+// CleanupCredentialsSecret restores a Secret that predated this suite and removes one it created.
+func CleanupCredentialsSecret(ctx context.Context, apiClient client.Client) error {
+	credentialsSecretMutex.Lock()
+	defer credentialsSecretMutex.Unlock()
+
+	if previousCredentialsSecret != nil {
+		return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			current := &corev1.Secret{}
+			if err := apiClient.Get(ctx, client.ObjectKey{
+				Name: farparams.SharedCredentialsSecretName, Namespace: medik8sparams.OperatorNs,
+			}, current); err != nil {
+				return err
+			}
+
+			current.Data = previousCredentialsSecret.Data
+			current.Type = previousCredentialsSecret.Type
+			current.Immutable = previousCredentialsSecret.Immutable
+			current.Labels = previousCredentialsSecret.Labels
+			current.Annotations = previousCredentialsSecret.Annotations
+
+			return apiClient.Update(ctx, current)
+		})
+	}
+
+	if credentialsSecretCreated {
+		err := apiClient.Delete(ctx, &corev1.Secret{ObjectMeta: metav1.ObjectMeta{
+			Name: farparams.SharedCredentialsSecretName, Namespace: medik8sparams.OperatorNs,
+		}})
+		if !k8serrors.IsNotFound(err) {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func buildFenceParams(
