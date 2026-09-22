@@ -170,7 +170,6 @@ The project uses a development method - forking workflow
     │   ├── nhc-operator                   # Node Health Check tests
     │   ├── nmo-operator                   # Node Maintenance Operator tests
     │   └── snr-operator                   # Self Node Remediation tests
-    └── vendor                             # Dependencies folder
 ### Code conventions
 #### Lint
 Push requested are tested in a pipeline with golangci-lint. It is advised to add [Golangci-lint integration](https://golangci-lint.run/usage/integrations/) to your development editor. It's recommended to run `make lint` before uploading a PR.
@@ -239,4 +238,4 @@ func Function(
 
 #### Note: To start using the new package for the first time:
 1. Add it to the import section of your test
-2. Run `go mod vendor`
+2. Run `go mod tidy`
