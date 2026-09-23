@@ -182,14 +182,25 @@ var _ = Describe("NHC+FAR Interop",
 
 				By("Cleanup: deleting FAR CR for " + nhcState.targetNode)
 
-				_ = deleteRemediationCR(ctx, APIClient, farGVK, nhcState.farName)
+				if err := deleteRemediationCR(ctx, APIClient, farGVK, nhcState.farName); err != nil {
+					message := fmt.Sprintf("failed to delete FAR CR %s: %v", nhcState.farName, err)
+					GinkgoWriter.Printf("WARNING: %s\n", message)
+					AddReportEntry("nhc-cleanup-far-delete-failed", message)
+				}
+
 				nhcState.farName = ""
 			}
 
 			if nhcRemoved && nhcState.farTemplateName != "" {
 				By("Cleanup: deleting FAR template " + nhcState.farTemplateName)
-				_ = deleteRemediationCR(ctx, APIClient, farTemplateGVK, nhcState.farTemplateName)
-				nhcState.farTemplateName = ""
+
+				if err := deleteRemediationCR(ctx, APIClient, farTemplateGVK, nhcState.farTemplateName); err != nil {
+					message := fmt.Sprintf("failed to delete FAR template %s: %v", nhcState.farTemplateName, err)
+					GinkgoWriter.Printf("WARNING: %s\n", message)
+					AddReportEntry("nhc-cleanup-template-delete-failed", message)
+				} else {
+					nhcState.farTemplateName = ""
+				}
 			}
 
 			if nhcState.targetNode != "" && nhcState.labelApplied {
@@ -253,7 +264,11 @@ var _ = Describe("NHC+FAR Interop",
 				By("Cleanup: restoring second NHC target " + secondNHCState.targetNode)
 
 				if secondNHCState.farName != "" {
-					_ = deleteRemediationCR(ctx, APIClient, farGVK, secondNHCState.farName)
+					if err := deleteRemediationCR(ctx, APIClient, farGVK, secondNHCState.farName); err != nil {
+						message := fmt.Sprintf("failed to delete second FAR CR %s: %v", secondNHCState.farName, err)
+						GinkgoWriter.Printf("WARNING: %s\n", message)
+						AddReportEntry("nhc-cleanup-second-far-delete-failed", message)
+					}
 				}
 
 				node := &corev1.Node{}
@@ -264,12 +279,24 @@ var _ = Describe("NHC+FAR Interop",
 						delete(node.Labels, farparams.NHCInteropLabelKey)
 					}
 
-					_ = APIClient.Update(ctx, node)
+					if updateErr := APIClient.Update(ctx, node); updateErr != nil {
+						message := fmt.Sprintf("failed to restore label on second target %s: %v",
+							secondNHCState.targetNode, updateErr)
+						GinkgoWriter.Printf("WARNING: %s\n", message)
+						AddReportEntry("nhc-cleanup-second-label-restore-failed", message)
+					}
 				}
 
 				startKubeletAfterRemediation(ctx, secondNHCState.targetNode)
-				_ = farutils.WaitForNodeReady(ctx, APIClient, secondNHCState.targetNode,
-					farparams.NodeReadyTimeout, GinkgoWriter.Printf)
+
+				if err := farutils.WaitForNodeReady(ctx, APIClient, secondNHCState.targetNode,
+					farparams.NodeReadyTimeout, GinkgoWriter.Printf); err != nil {
+					message := fmt.Sprintf("second target node %s did not become Ready within %s: %v",
+						secondNHCState.targetNode, farparams.NodeReadyTimeout, err)
+					GinkgoWriter.Printf("WARNING: %s\n", message)
+					AddReportEntry("nhc-cleanup-second-node-recovery-failed", message)
+				}
+
 				secondNHCState = nhcRemediationState{}
 			}
 		})
